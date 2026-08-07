@@ -138,17 +138,26 @@ _WAIT_FOR_TEXT = r"""
 """
 
 
-async def _locate_then_click(client, js, args):
+async def _locate_then_click(client, js, args, gate=None):
     """Resolve the target in-page, then dispatch a TRUSTED mouse event at its centre.
 
     Same hybrid as snapshot.click(): in-page targeting is robust and needs no coordinate
     math, but the click itself must be a real event or frameworks and anti-automation
     checks ignore it. Falls back to an in-page click when the box is unusable (off-screen
     or zero-size), by re-running the macro with doClick=true.
+
+    `gate` is an optional async callable taking the resolved control's visible name and
+    returning (allowed, reason). Resolving with doClick=false first is what makes a
+    consent check possible at all: the macro reports WHAT it matched before anything fires.
     """
     r = await cdp.eval_json(client, js + f"({args}, false)")
     if not r.get("ok"):
         return r
+    if gate is not None:
+        allowed, why = await gate(r.get("clicked", ""))
+        if not allowed:
+            return {"ok": False, "error": f"BLOCKED BY CONSENT GATE: {why}",
+                    "would_have_clicked": r.get("clicked", "")}
     x, y, w, h = r.get("x", 0), r.get("y", 0), r.get("w", 0), r.get("h", 0)
     if w > 0 and h > 0 and 0 <= x < r.get("vw", 0) and 0 <= y < r.get("vh", 0):
         await cdp.trusted_click(client, x, y)
@@ -161,14 +170,14 @@ async def _locate_then_click(client, js, args):
     return r
 
 
-async def click_in_section(client, section, control):
+async def click_in_section(client, section, control, gate=None):
     return await _locate_then_click(
-        client, _CLICK_IN_SECTION, f"{json.dumps(section)}, {json.dumps(control)}")
+        client, _CLICK_IN_SECTION, f"{json.dumps(section)}, {json.dumps(control)}", gate)
 
 
-async def click_by_text(client, text, nth=0):
+async def click_by_text(client, text, nth=0, gate=None):
     return await _locate_then_click(
-        client, _CLICK_BY_TEXT, f"{json.dumps(text)}, {json.dumps(nth)}")
+        client, _CLICK_BY_TEXT, f"{json.dumps(text)}, {json.dumps(nth)}", gate)
 
 
 async def fill_labeled_input(client, label, value):

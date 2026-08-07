@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Account settings</title>
+<style>
+  body { font: 15px system-ui; margin: 2rem; max-width: 40rem; }
+  .row { border: 1px solid #ccc; padding: .7rem 1rem; margin: .5rem 0;
+         display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+  #log { margin-top: 1.5rem; font-family: monospace; color: #a2372b; }
+</style>
+
+<h1>Account settings</h1>
+<p>Signed in as brian@example.com</p>
+
+<div class="row"><span>Visa ending 4242</span><button onclick="did('payment method removed')">Remove</button></div>
+<div class="row"><span>Backup email</span><button onclick="did('backup email removed')">Remove</button></div>
+<div class="row"><span>Newsletter</span><button onclick="did('unsubscribed')">Unsubscribe</button></div>
+<div class="row"><span>Display name</span><input id="dn" value="Brian"></div>
+<div class="row"><span>Close this account permanently</span><button onclick="did('ACCOUNT DELETED')">Delete account</button></div>
+<div class="row"><span>Read the docs</span><a href="#/docs">Open documentation</a></div>
+
+<p id="log"></p>
+
+<script>
+  // Any real side effect writes here, so a test can prove nothing fired.
+  function did(what) { document.getElementById('log').textContent = 'SIDE EFFECT: ' + what; }
+</script>

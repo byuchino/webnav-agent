@@ -9,7 +9,7 @@ import json
 import logging
 from urllib.parse import urlparse
 
-from . import cdp, llm, skills, snapshot
+from . import cdp, consent, llm, skills, snapshot
 
 log = logging.getLogger("agent")
 
@@ -47,7 +47,8 @@ def _value_of(d):
     return None
 
 
-async def act(c, d, env, allowlist=None):
+async def act(c, d, env, allowlist=None, policy=consent.DESTRUCTIVE, allow_eval_js=True,
+              goal=""):
     """Dispatch ONE action and return a TOOL RESULT string to surface on the next turn.
 
     §6's headline defect: the reference computes NOT_FOUND / STALE and then throws the
@@ -57,6 +58,30 @@ async def act(c, d, env, allowlist=None):
     """
     op = d.get("op")
     i = d.get("index")
+    url = env.get("url", "")
+
+    # --- consent gate (§17 mitigation 6) ------------------------------------------------
+    # Index ops know their target from the snapshot, so they are checked here, up front.
+    # The macros resolve their own targets, so they carry the gate inward as a callback and
+    # check after resolving but before clicking.
+    meta = (env.get("_meta") or {}).get(i, {})
+
+    async def _gate(name, role="", ctx="", text=""):
+        return await consent.gate(policy, op, index=i, name=name, role=role, ctx=ctx,
+                                  text=text, url=url, goal=goal)
+
+    async def _macro_gate(resolved_name):
+        # The section the model named is this macro's row context — "Remove" is judged very
+        # differently in "Visa ending 4242" than in a list of search filters.
+        return await consent.gate(policy, "click", name=resolved_name, role="button",
+                                  ctx=d.get("section", ""), url=url, goal=goal)
+
+    if op in consent.MUTATING and op not in ("click_by_text", "click_in_section"):
+        ok, why = await _gate(meta.get("name", ""), meta.get("role", ""),
+                              text=_value_of(d) if op == "setval" else "")
+        if not ok:
+            return f"TOOL RESULT {op}[{i}]: " + json.dumps(
+                {"ok": False, "error": f"BLOCKED BY CONSENT GATE: {why}"})
 
     if op == "click":
         r = await snapshot.click(c, env, i)
@@ -92,13 +117,17 @@ async def act(c, d, env, allowlist=None):
         await asyncio.sleep(min(int(d.get("ms", 500)), 5000) / 1000)
         r = {"ok": True}
     elif op == "eval_js":
-        r = await skills.eval_js(c, d.get("expr", ""))
+        if not allow_eval_js:
+            r = {"ok": False, "error": "eval_js is disabled for this task"}
+        else:
+            r = await skills.eval_js(c, d.get("expr", ""))
     elif op == "extract_jsonld":
-        r = await skills.extract_jsonld(c)
+        r = await skills.extract_jsonld(c)          # fixed, read-only expression
     elif op == "click_by_text":
-        r = await skills.click_by_text(c, d.get("text", ""), d.get("nth", 0))
+        r = await skills.click_by_text(c, d.get("text", ""), d.get("nth", 0), _macro_gate)
     elif op == "click_in_section":
-        r = await skills.click_in_section(c, d.get("section", ""), d.get("control", ""))
+        r = await skills.click_in_section(c, d.get("section", ""), d.get("control", ""),
+                                          _macro_gate)
     elif op == "fill_labeled_input":
         v = _value_of(d)
         if v is None:
@@ -127,7 +156,8 @@ REPEAT_WARN = 2   # identical consecutive actions before we warn the model
 REPEAT_STOP = 4   # ... before we stop and force a report
 
 
-async def solve(c, goal_text, max_steps=8, allowlist=None):
+async def solve(c, goal_text, max_steps=8, allowlist=None, policy=consent.DESTRUCTIVE,
+                allow_eval_js=True):
     hist = []
     last_tool = ""
     answer = None
@@ -182,7 +212,8 @@ async def solve(c, goal_text, max_steps=8, allowlist=None):
             break
 
         try:
-            last_tool = await act(c, d, env, allowlist) or last_tool
+            last_tool = await act(c, d, env, allowlist, policy, allow_eval_js,
+                                  goal_text) or last_tool
         except Exception as e:  # noqa: BLE001
             last_tool = f"TOOL RESULT {d.get('op')}: ERROR {str(e)[:80]}"   # tell the model
         log.info("        %s", last_tool[:200])
@@ -199,13 +230,15 @@ def default_allowlist(start_url):
     return [p.hostname.lower()] if p.hostname else []
 
 
-async def run(goal, start_url, max_steps=8, allowlist=None):
+async def run(goal, start_url, max_steps=8, allowlist=None, policy=consent.DESTRUCTIVE,
+              allow_eval_js=True):
     allowlist = list(allowlist) if allowlist else default_allowlist(start_url)
-    log.info("navigation allowlist: %s", allowlist)
+    log.info("navigation allowlist: %s  |  consent policy: %s  |  eval_js: %s",
+             allowlist, policy, "on" if allow_eval_js else "off")
     tid, ws = await cdp.open_url(start_url)
     try:
         async with cdp.Client(ws) as c:
             await asyncio.sleep(0.5)
-            return await solve(c, goal, max_steps, allowlist)
+            return await solve(c, goal, max_steps, allowlist, policy, allow_eval_js)
     finally:
         await cdp.close_target(tid)

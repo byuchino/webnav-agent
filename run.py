@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 
-from agent import agent, cdp, snapshot
+from agent import agent, cdp, consent, snapshot
 
 
 def to_url(target):
@@ -45,6 +45,13 @@ async def main():
     ap.add_argument("--snapshot", action="store_true", help="print the observation and exit")
     ap.add_argument("--steps", type=int, default=8)
     ap.add_argument("--allow", action="append", help="host allowed for navigate (repeatable)")
+    ap.add_argument("--confirm", choices=consent.POLICIES, default=consent.DESTRUCTIVE,
+                    help="when to ask a human before a mutating action "
+                         "(auto=never, destructive=on irreversible wording [default], "
+                         "writes=every mutation, readonly=refuse all mutations)")
+    ap.add_argument("--no-eval-js", action="store_true",
+                    help="disable model-authored JavaScript — recommended for "
+                         "authenticated sessions, where it is the widest hole")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
 
@@ -62,7 +69,8 @@ async def main():
         print("a goal is required unless --snapshot is given", file=sys.stderr)
         return 2
 
-    answer, hist = await agent.run(a.goal, url, a.steps, a.allow)
+    answer, hist = await agent.run(a.goal, url, a.steps, a.allow,
+                                   policy=a.confirm, allow_eval_js=not a.no_eval_js)
     print(f"\n=== GOAL   : {a.goal}")
     print(f"=== ANSWER : {answer!r}")
     print(f"=== STEPS  : {len(hist)}")

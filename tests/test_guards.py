@@ -8,7 +8,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent import loose_json, skills  # noqa: E402
+from agent import consent, loose_json, skills  # noqa: E402
 from agent.agent import default_allowlist  # noqa: E402
 
 FAILURES = []
@@ -64,6 +64,40 @@ for expr, want in [
     ("(()=>{let t=0;document.querySelectorAll('td').forEach(c=>t++);return t;})()", False),
 ]:
     check(f"eval_js {expr[:48]!r}", asyncio.run(blocked(expr)), want)
+
+print("\nconsent gate — destructive wording (§17 mitigation 6):")
+for name, want in [
+    ("Delete account", True), ("Remove payment method", True), ("Send message", True),
+    ("Place order", True), ("Confirm purchase", True), ("Transfer funds", True),
+    ("Unsubscribe", True), ("Cancel subscription", True), ("Sign out", True),
+    ("Reset password", True), ("Buy now", True),
+    # Must NOT fire — a gate that trips on everything trains the operator to ignore it.
+    ("Search", False), ("Next", False), ("Home", False), ("Sign in", False),
+    ("Add to cart", False), ("Cancel", False), ("Show more", False),
+    ("Skip to main", False), ("Follow", False), ("Summary", False),
+]:
+    check(f"classify {name!r}", consent.classify(name) is not None, want)
+
+print("\nconsent gate — policy decisions (non-interactive: must FAIL CLOSED):")
+
+
+def decide(policy, op, **kw):
+    return asyncio.run(consent.gate(policy, op, **kw))[0]
+
+
+check("auto allows a delete", decide(consent.AUTO, "click", name="Delete account"), True)
+check("destructive allows benign click", decide(consent.DESTRUCTIVE, "click", name="Next"), True)
+check("destructive blocks delete (no tty)",
+      decide(consent.DESTRUCTIVE, "click", name="Delete account"), False)
+check("destructive blocks via row context",
+      decide(consent.DESTRUCTIVE, "click", name="Remove", ctx="Visa ending 4242"), False)
+check("writes blocks a benign click", decide(consent.WRITES, "click", name="Next"), False)
+check("writes allows navigation", decide(consent.WRITES, "navigate", url="https://x.test"), True)
+check("readonly blocks a button", decide(consent.READONLY, "click", name="Next", role="button"), False)
+check("readonly allows a link", decide(consent.READONLY, "click", name="Next", role="link"), True)
+check("readonly blocks setval", decide(consent.READONLY, "setval", name="Email"), False)
+check("readonly allows scroll", decide(consent.READONLY, "scroll"), True)
+check("non-mutating op is never gated", decide(consent.WRITES, "extract_jsonld"), True)
 
 print("\nloose JSON parse:")
 check("fenced", loose_json.parse('```json\n{"op":"click","index":3}\n```'), {"op": "click", "index": 3})

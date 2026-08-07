@@ -159,15 +159,36 @@ Built in from day one, not bolted on:
 - **In-page redaction** (§4.5 O9) — password and secret-ish field values are replaced with
   `[redacted]` *before* they cross the wire, so they never reach the prompt, the log, or the
   model server.
+- **Human-in-the-loop for irreversible actions** (mitigation 6) — `agent/consent.py`. Four
+  policies, selected with `--confirm`:
 
-Not yet done: mitigation 6, human-in-the-loop for irreversible actions. Do this before
-pointing the agent at anything that can spend money or delete data.
+  | Policy | Behaviour |
+  |---|---|
+  | `auto` | Never asks. For anonymous fixtures and read-only scraping. |
+  | `destructive` | **Default.** Asks when the target's wording looks irreversible. |
+  | `writes` | Asks before every mutation, whatever it is called. |
+  | `readonly` | Refuses every mutation. Links may still be followed. |
+
+  It **fails closed**: with no interactive terminal there is no human to ask, so the answer
+  is no. Refusals reach the model as a `TOOL RESULT`, exactly like a blocked navigation, so
+  it can route around instead of retrying blindly.
+
+  Index ops are checked before dispatch from the snapshot's own control metadata; the macros
+  carry the gate inward as a callback and check **after resolving, before clicking** — which
+  is only possible because they already resolve with `doClick=false` first. `click_in_section`
+  also passes its section as row context, so "Remove" is judged differently in
+  "Visa ending 4242" than in a list of filters.
+
+  The name match is a tripwire, not a proof — "Continue" can be the last step of a purchase.
+  Anything that genuinely must not happen unattended belongs under `writes` or `readonly`.
 
 ## Status
 
 **Fixtures: 6/6 smoke cases pass** — read, `click_in_section` against three identical Remove
-buttons, `eval_js` aggregate, fill, JSON-LD extraction, and the injection case. Plus 27
-guardrail tests. Snapshot of the cart fixture: **4 ms**, 59 nodes.
+buttons, `eval_js` aggregate, fill, JSON-LD extraction, and the injection case. Plus **59
+guardrail tests** and a consent end-to-end suite that proves no side effect fires — with the
+control condition that under `auto` the same click *does* fire, so a broken fixture cannot
+masquerade as a working gate. Snapshot of the cart fixture: **4 ms**, 59 nodes.
 
 **Real site, unaided task: FAILED.** Given "what is CrowdStrike's share price?" starting at
 `yahoo.com`, the agent searched, reached Finance, and reported the price of the *wrong

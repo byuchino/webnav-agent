@@ -334,6 +334,10 @@ async def build(client, prev_tokens=()):
     env["token"] = token
     env.setdefault("controls", [])
     env["_fp"] = {c["i"]: c.get("fp", "") for c in env["controls"]}
+    # Identity of each control, for the consent gate (§17 mitigation 6) to describe what it
+    # is about to do without paying a second round-trip to look it up.
+    env["_meta"] = {c["i"]: {"name": c.get("name", ""), "role": c.get("role", "")}
+                    for c in env["controls"]}
     return env
 
 
