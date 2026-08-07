@@ -1,0 +1,11 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Machine-local Claude Code permissions (contains this LAN's host/port allowlist)
+.claude/settings.local.json
+
+# Chrome debugging profiles — never commit a browser profile, it holds cookies
+cdp-profile/
+*.log

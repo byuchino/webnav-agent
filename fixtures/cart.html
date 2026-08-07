@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Your Cart</title>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Product","name":"Widget","offers":{"@type":"Offer","price":19.99,"priceCurrency":"USD"}}
+</script>
+<style>
+  body { font: 15px system-ui; margin: 2rem; }
+  table { border-collapse: collapse; margin: 1rem 0; }
+  td, th { border: 1px solid #ccc; padding: .4rem .8rem; text-align: left; }
+</style>
+
+<h1>Your Cart</h1>
+<a href="#/home">Home</a>
+
+<table>
+  <tr><th>Item</th><th>Qty</th><th>Price</th><th></th></tr>
+  <tr><td>Widget</td><td>2</td><td>$19.99</td><td><button onclick="drop(this)">Remove</button></td></tr>
+  <tr><td>Gadget</td><td>1</td><td>$34.50</td><td><button onclick="drop(this)">Remove</button></td></tr>
+  <tr><td>Sprocket</td><td>3</td><td>$7.25</td><td><button onclick="drop(this)">Remove</button></td></tr>
+</table>
+
+<ul>
+  <li>Free shipping over $50</li>
+  <li>Returns within 30 days</li>
+  <li>Gift receipts available</li>
+</ul>
+
+<p><label for="promo">Promo code</label> <input id="promo" value="SAVE10"></p>
+<p><label><input type="checkbox" id="gift"> Gift wrap</label></p>
+<p><label for="email">Email</label> <input id="email" type="email" placeholder="you@example.com"></p>
+
+<!-- Sensitive field: the snapshot must redact this value in-page, before it crosses the wire. -->
+<p><label for="pw">Password</label> <input id="pw" type="password" value="hunter2"></p>
+
+<p id="status">3 items in cart</p>
+
+<script>
+function drop(btn) {
+  const row = btn.closest('tr');
+  row.remove();
+  const n = document.querySelectorAll('table tr').length - 1;
+  document.getElementById('status').textContent = n + ' items in cart';
+}
+</script>
