@@ -109,11 +109,25 @@ https: 200,  dns ok,  gateway ping ok
 `10.77.0.11` as `labadmin` with `~/.ssh/falcon_lab_ed25519`. Snapshot `clean-cloudinit` taken.
 Fully hands-off to rebuild.
 
-**VM 900 `falcon-lab-win` — OS installs unattended; first-boot config does NOT run.**
-Windows 11 Enterprise LTSC 2024 installs with zero interaction: disk partitioned, edition
-selected, `labadmin` created, auto-logon to desktop. What does not happen is
-`FirstLogonCommands`, so the machine has no IP and no SSH, and is currently reachable only
-through the Proxmox console.
+**VM 900 `falcon-lab-win` — done.** Windows 11 Enterprise LTSC 2024 installs with zero
+interaction and configures itself: static `10.77.0.10`, OpenSSH with key auth, RDP enabled,
+`C:\lab-ready.txt` written as the completion marker. Reachable with
+`ssh -i ~/.ssh/falcon_lab_ed25519 labadmin@10.77.0.10`. Snapshot `clean-preSensor` taken.
+
+> **Do not use `ping` to test whether a Windows guest is up.** Windows Firewall drops ICMP by
+> default. Several cycles were spent diagnosing a machine that had been online the whole time,
+> because the liveness check could not have succeeded. Test a TCP port (22/3389) or capture on
+> the tap instead.
+
+**LXC 902 `falcon-lab-dhcp` — done.** dnsmasq serving `10.77.0.100-200` on the lab bridge.
+
+> Chosen over running dnsmasq on the hypervisor, and the reason is worth keeping: on the host
+> the protection against serving DHCP to the LAN is a *configuration* line (`interface=vmbr1`,
+> `bind-interfaces`) that a typo or package update can undo. A container with a single NIC on
+> `vmbr1` has **no interface to the LAN at all**, so a rogue lease is structurally impossible
+> rather than merely configured away. Config uses `port=0` so it is DHCP-only and never
+> listens on 53. Verified afterwards: the hypervisor has no new listeners and dnsmasq is not
+> installed on it.
 
 ### Windows lessons, each of which cost a cycle
 
@@ -139,23 +153,16 @@ through the Proxmox console.
 6. `tools/qm_type.py` types into a VM console via `qm sendkey`, for when a guest has no
    network and the virtual keyboard is the only way in.
 
-### The open bug and the fix to try first
+### FirstLogonCommands: resolved
 
-`FirstLogonCommands` never runs. Ruled out: the script is present and reachable
-(`Test-Path F:\lab\setup.ps1` -> True) and it never started (`C:\lab-setup.log` -> False, and
-the transcript is its first statement). Removing the deprecated `SkipMachineOOBE`/
-`SkipUserOOBE` did not fix it and re-introduced the OOBE region prompts, which need a
-`Microsoft-Windows-International-Core` component in the **oobeSystem** pass (only the
-`-WinPE` variant was present, in `windowsPE`).
+It does run. Two things had to be true: the deprecated `SkipMachineOOBE`/`SkipUserOOBE` had to
+go, **and** a `Microsoft-Windows-International-Core` component added to the **oobeSystem** pass
+— the `-WinPE` variant only covers Setup, so without it OOBE still asks for country and
+keyboard and waits forever. Both are now in `unattend/autounattend.xml`.
 
-**Do not keep debugging this through the console.** The durable fix is to stop making
-reachability depend on a first-logon script at all: run **DHCP on `vmbr1`** (dnsmasq on
-proxmox-1, or a Proxmox SDN simple zone). Then Windows gets an address from its default
-configuration, SSH can be installed remotely, and `setup.ps1` becomes a convenience rather
-than a single point of failure. That also removes the static-IP step from the Linux side.
-
-Note also that manual console attempts failed with `Windows System Error 5` because a
-Start-menu PowerShell is **not elevated**; `FirstLogonCommands` would have run elevated.
+Note also that debugging this through the console was a dead end: a Start-menu PowerShell is
+**not elevated**, so manual attempts failed with `Windows System Error 5` while
+`FirstLogonCommands` — which runs elevated — would have worked all along.
 
 ## Blockers
 
