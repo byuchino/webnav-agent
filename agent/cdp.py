@@ -7,11 +7,14 @@ Runtime.evaluate, Input.dispatch*Event, and Page.navigate/captureScreenshot.
 import asyncio
 import base64
 import json
+import os
 import urllib.request
 
 from cdp_use.client import CDPClient
 
-CDP_PORT = 9222
+# Which browser to drive. Local Chrome is the default; point this at the far end of an SSH
+# tunnel to drive Chrome on another machine (see README, "Driving a remote browser").
+CDP_PORT = int(os.environ.get("CDP_PORT", "9222"))
 
 
 def targets():

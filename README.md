@@ -41,6 +41,65 @@ The model server is LM Studio on `192.168.254.26:1234`, model `google/gemma-4-e4
 | `agent/loose_json.py` | §14.3 | Forgiving parse and repair |
 | `agent/agent.py` | §15.1 | Observe/decide/act/report loop, dispatcher |
 
+## Driving a remote browser (and authenticated sessions)
+
+The agent can drive Chrome on another machine — useful when that machine holds the sessions
+you need, or is where the model already lives.
+
+**The tunnel is required, not a convenience.** Chrome's DevTools endpoint rejects any request
+whose `Host` header isn't loopback (*"Host header is specified and is not an IP address or
+localhost"*), so opening 9222 on the remote firewall does not work. An SSH local forward makes
+it look local — and keeps a full-browser-control port off the LAN, which matters far more once
+the profile is authenticated:
+
+```bash
+ssh -N -L 9333:127.0.0.1:9222 <host>       # keep this running
+CDP_PORT=9333 ./run.py --snapshot https://example.com/
+```
+
+`CDP_PORT` (default 9222) is the only knob; local and remote browsers can run side by side.
+
+**Launching Chrome remotely.** On Windows, `Start-Process` over SSH is not enough — OpenSSH
+kills child processes when the session ends, and the browser dies the moment the command
+returns. Spawn it detached via WMI instead:
+
+```powershell
+$cmd = '"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir=C:\cdp-profile --no-first-run --no-default-browser-check --headless=new about:blank'
+Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine=$cmd}
+```
+
+A separate `--user-data-dir` means this coexists with the daily browser; neither disturbs the
+other.
+
+### Signing in
+
+Headless Chrome launched over SSH has no visible window, so log in from the machine's own
+desktop, once:
+
+1. Close any Chrome using `C:\cdp-profile` (Chrome locks a profile directory to one instance).
+2. On the desktop, launch Chrome **headed** with the same `--user-data-dir=C:\cdp-profile` and
+   sign in to only the sites the task needs. Close it.
+3. Relaunch headless with the WMI command above. Cookies persist in the profile.
+
+### Posture for authenticated runs
+
+§17 mitigation 1 — *"a dedicated profile with no valuable sessions"* — is the cheapest
+protection there is, and signing in deliberately gives it up. What remains has to carry more:
+
+```bash
+CDP_PORT=9333 ./run.py --confirm writes --no-eval-js --allow example.com "..."
+```
+
+- **A dedicated profile signed into only what the task needs.** Never the daily profile: this
+  agent has been observed obeying an injected instruction on step 0, every run.
+- **`--confirm writes`**, not `destructive`. The wording match is a tripwire and misses
+  "Continue" as the last step of a purchase.
+- **`--no-eval-js`.** Model-authored JavaScript is the widest remaining hole.
+- **Know what the allowlist cannot do.** It stops the agent *reaching* a hostile origin. It
+  cannot see an injection hosted *on the site you are logged into* — a comment, an email body,
+  a search-result snippet — which is precisely where the session lives. Only the consent gate
+  stands between that and an irreversible action, which is why `writes` is the honest setting.
+
 ## Op menu
 
 13 of the guide's 23 ops (Appendix A). `assert_menu_consistent()` runs at import and fails
