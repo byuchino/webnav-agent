@@ -9,7 +9,13 @@ import json
 import logging
 from urllib.parse import urlparse
 
-from . import cdp, consent, llm, skills, snapshot
+from . import cdp, consent, llm, skills, snapshot, verify
+
+# Ops whose whole point is to change something. If one of these reports success and nothing
+# on the page moved, that is the untrusted-click failure mode: {"ok":"clicked"} for an event
+# the page ignored. Verify them (§16.4).
+VERIFIED_OPS = {"click", "check", "setval", "submit", "navigate",
+                "click_by_text", "click_in_section", "fill_labeled_input"}
 
 log = logging.getLogger("agent")
 
@@ -83,6 +89,10 @@ async def act(c, d, env, allowlist=None, policy=consent.DESTRUCTIVE, allow_eval_
             return f"TOOL RESULT {op}[{i}]: " + json.dumps(
                 {"ok": False, "error": f"BLOCKED BY CONSENT GATE: {why}"})
 
+    # Before-picture for §16.4. Taken by the harness, never by the model: an expectation the
+    # model authored would only restate whatever it already believes.
+    before = await verify.capture(c) if op in VERIFIED_OPS else None
+
     if op == "click":
         r = await snapshot.click(c, env, i)
     elif op == "check":
@@ -139,6 +149,19 @@ async def act(c, d, env, allowlist=None, policy=consent.DESTRUCTIVE, allow_eval_
     else:
         r = {"ok": False, "error": f"unknown op '{op}'"}
 
+    # Only verify actions that claimed to work. Re-checking an already-failed action adds a
+    # round trip and tells us nothing we don't know.
+    claimed = isinstance(r, dict) and r.get("ok") not in (False, None)
+    if before is not None and claimed:
+        v = await verify.verify_action(c, op, before)
+        if v.get("ok") is False:
+            r = dict(r)
+            r["VERIFY"] = "the page did not change — this action appears to have had no effect"
+            log.warning("verify: %s claimed success but nothing changed", op)
+        elif v.get("ok"):
+            r = dict(r)
+            r["verified"] = {k: v[k] for k in ("url", "text_delta", "controls_delta") if k in v}
+
     return f"TOOL RESULT {op}" + (f"[{i}]" if i is not None else "") + ": " + json.dumps(r)
 
 
@@ -164,6 +187,8 @@ async def solve(c, goal_text, max_steps=8, allowlist=None, policy=consent.DESTRU
     tokens = []
     prev_sig = None
     repeats = 0
+    rechecked = False
+    prov = None
 
     for step in range(max_steps):
         # --- OBSERVE (with a retry: a mid-navigation snapshot legitimately throws) ---
@@ -202,6 +227,23 @@ async def solve(c, goal_text, max_steps=8, allowlist=None, policy=consent.DESTRU
 
         if "report" in d:
             answer = d["report"]
+            prov = await verify.answer_provenance(c, str(answer))
+            # An answer produced by eval_js or extract_jsonld is DERIVED — a computed total
+            # is legitimately absent from the page, so "not found" is not evidence of
+            # invention. Rejecting those was a false positive that cost three extra steps.
+            derived = any(h.get("op") in ("eval_js", "extract_jsonld") for h in hist
+                          if isinstance(h, dict))
+            prov["derived"] = derived
+            log.info("        %s", verify.describe(prov))
+            if prov.get("found") == 0 and not derived and not rechecked:
+                rechecked = True
+                last_tool = (f"TOOL RESULT report: your answer {answer!r} does not appear "
+                             f"anywhere on this page. Re-read the PAGE tree and report a "
+                             f"value that is actually present.")
+                log.warning("verify: reported value not on page, asking again")
+                hist.append({"_rejected_report": str(answer)})
+                answer = None
+                continue
             break
 
         sig = json.dumps(d, sort_keys=True)
@@ -218,7 +260,7 @@ async def solve(c, goal_text, max_steps=8, allowlist=None, policy=consent.DESTRU
             last_tool = f"TOOL RESULT {d.get('op')}: ERROR {str(e)[:80]}"   # tell the model
         log.info("        %s", last_tool[:200])
 
-    return answer, hist
+    return answer, hist, prov
 
 
 def default_allowlist(start_url):

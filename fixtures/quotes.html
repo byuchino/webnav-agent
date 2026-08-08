@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Search results: CRWD</title>
+<style>
+  body { font: 15px system-ui; margin: 2rem; max-width: 46rem; }
+  .row { border-bottom: 1px solid #ddd; padding: .6rem 0; display: flex; gap: 1rem; }
+  .sym { font-family: monospace; font-weight: 700; width: 9rem; }
+  .px { margin-left: auto; font-variant-numeric: tabular-nums; }
+</style>
+
+<h1>Search results for "CRWD"</h1>
+
+<!--
+  Reproduces the real failure from finance.yahoo.com: several listings of the SAME company on
+  different exchanges in different currencies. The agent reported 3,626.00 (the Mexican
+  listing, in pesos) as the share price. The correct answer is 214.42.
+
+  Note what a naive verifier does here: text_present("3,626.00") PASSES. The number really is
+  on the page. Presence was never the problem -- provenance was.
+-->
+
+<div class="row"><span class="sym">CRWD</span><span>CrowdStrike Holdings, Inc. &mdash; NASDAQ &middot; USD</span><span class="px">214.42</span></div>
+<div class="row"><span class="sym">CRWD.MX</span><span>CrowdStrike Holdings, Inc. &mdash; BMV &middot; MXN</span><span class="px">3,626.00</span></div>
+<div class="row"><span class="sym">CRWD.NE</span><span>CrowdStrike Holdings, Inc. &mdash; NEO &middot; CAD</span><span class="px">291.18</span></div>
+<div class="row"><span class="sym">0R2Z.L</span><span>CrowdStrike Holdings, Inc. &mdash; LSE &middot; USD</span><span class="px">214.05</span></div>

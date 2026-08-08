@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 
-from agent import agent, cdp, consent, snapshot
+from agent import agent, cdp, consent, snapshot, verify
 
 
 def to_url(target):
@@ -69,11 +69,15 @@ async def main():
         print("a goal is required unless --snapshot is given", file=sys.stderr)
         return 2
 
-    answer, hist = await agent.run(a.goal, url, a.steps, a.allow,
-                                   policy=a.confirm, allow_eval_js=not a.no_eval_js)
+    answer, hist, prov = await agent.run(a.goal, url, a.steps, a.allow,
+                                         policy=a.confirm, allow_eval_js=not a.no_eval_js)
     print(f"\n=== GOAL   : {a.goal}")
     print(f"=== ANSWER : {answer!r}")
     print(f"=== STEPS  : {len(hist)}")
+    if prov is not None:
+        print(f"=== SOURCE : {verify.describe(prov)}")
+        for h in prov.get("hits", [])[:3]:
+            print(f"             - {h['context']}")
     return 0 if answer is not None else 1
 
 

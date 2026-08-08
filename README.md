@@ -41,6 +41,50 @@ The model server is LM Studio on `192.168.254.26:1234`, model `google/gemma-4-e4
 | `agent/loose_json.py` | §14.3 | Forgiving parse and repair |
 | `agent/agent.py` | §15.1 | Observe/decide/act/report loop, dispatcher |
 
+## The verification layer (§16.4, plus answer provenance)
+
+The guide calls this the largest gap in the reference design: production infers an action's
+success from the model having said something. Two halves are needed, and **only the first is
+in the guide**.
+
+**Action verification.** The harness takes a before-picture (URL, text length and head, control
+count, and a hash of all form values), acts, then re-checks. A claim of success with nothing
+changed is downgraded in the `TOOL RESULT`:
+
+```json
+{"ok": "clicked", "VERIFY": "the page did not change — this action appears to have had no effect"}
+```
+
+The expectation is produced by the acting layer, never the model — an expectation the model
+wrote would only restate what it already believes. This is the exact failure the untrusted-click
+bug produced for a whole session while reporting `{"ok":"clicked"}`.
+
+**Answer provenance** (not in the guide). The guide's own suggested verifier cannot catch a
+read that is extracted correctly from the wrong thing. When this agent reported `3,626.00` as
+CrowdStrike's share price, `text_present("3,626.00")` would have **passed** — the number was
+genuinely on the page, as the Mexican listing in pesos. Presence was never the problem.
+
+So instead of asking *is this value on the page*, ask **where did it come from**:
+
+```
+=== ANSWER : '214.42'
+=== SOURCE : answer provenance: 1 match — from: CRWD CrowdStrike Holdings, Inc. — NASDAQ · USD 214.42
+```
+
+Against `fixtures/quotes.html`, which reproduces the failure, the wrong answer is still found —
+but reports `from: CRWD.MX CrowdStrike Holdings, Inc. — BMV · MXN 3,626.00`. It does not
+adjudicate; it makes a silent wrong answer into an auditable one. A value found **nowhere** is
+rejected once and the model asked to re-read.
+
+Three false signals were introduced along with the verifier and had to be fixed — worth knowing,
+because each one wasted three steps per run and a verifier that cries wolf is worse than none:
+
+| False signal | Cause | Fix |
+|---|---|---|
+| A successful fill "changed nothing" | Form values are not in `innerText` and do not alter the control count | Hash all field values into the state signature |
+| A typed value read as "invented" | Same reason — provenance only searched page text | Search `input`/`textarea`/`select` values too, tagged `form-value` |
+| A computed total read as "invented" | `61.74` is summed by `eval_js`; it is legitimately absent from the page | Answers following `eval_js`/`extract_jsonld` are marked derived and never rejected |
+
 ## Driving a remote browser (and authenticated sessions)
 
 The agent can drive Chrome on another machine — useful when that machine holds the sessions

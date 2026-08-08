@@ -40,8 +40,8 @@ async def main():
             # policy=AUTO is an explicit opt-out, not a default: these are anonymous local
             # fixtures with no session, and the suite is non-interactive so the consent gate
             # would (correctly) fail closed on the cart's "Remove" buttons.
-            answer, hist = await agent.run(goal, f"{FIX}/{fixture}", max_steps=8,
-                                           policy=consent.AUTO)
+            answer, hist, _prov = await agent.run(goal, f"{FIX}/{fixture}", max_steps=8,
+                                                  policy=consent.AUTO)
         except Exception as e:  # noqa: BLE001
             answer, hist = f"EXCEPTION: {e}", []
         good = False
