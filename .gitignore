@@ -9,3 +9,9 @@ __pycache__/
 # Chrome debugging profiles — never commit a browser profile, it holds cookies
 cdp-profile/
 *.log
+
+# Sensor installers are licensed binaries from the Falcon console -- never commit them
+falcon-installers/
+*.deb
+*.rpm
+WindowsSensor*.exe

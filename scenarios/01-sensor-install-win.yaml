@@ -1,0 +1,53 @@
+id: sensor-install-win
+name: Install the Falcon sensor on Windows
+target: win
+baseline: bare          # deliberately a host with NO sensor -- that is the exercise
+mode: manual            # you install it; the lab only prepares and grades
+technique: null
+syllabus: CCFA - sensor deployment and verification
+
+summary: >
+  Install and register the Windows sensor by hand, then prove it actually reported in.
+  Every other scenario starts from a host that already has a sensor; this one does not.
+
+teaches: |
+  - Where the installer and your CID checksum come from in the console
+  - That the CID must be passed at install time, and what happens if it is not
+  - The difference between "the service is running" and "the host has registered"
+  - Where a newly installed host appears in the console, and how long it takes
+
+instructions: |
+  The Windows host has been rolled back to a clean, sensor-free state.
+
+  1. In the Falcon console, go to Host setup and management > Sensor downloads.
+     Note your CID with checksum from that page -- it is the CID plus a two-character
+     suffix, and the installer needs the whole thing.
+
+  2. Copy the installer onto the host. From your workstation:
+         scp -i ~/.ssh/falcon_lab_ed25519 WindowsSensor.exe labadmin@10.77.0.10:C:/lab/
+
+  3. Install it, from an ELEVATED PowerShell on the host
+     (ssh -i ~/.ssh/falcon_lab_ed25519 labadmin@10.77.0.10):
+         & 'C:\lab\WindowsSensor.exe' /install /quiet /norestart CID=<your-cid-with-checksum>
+
+  4. Wait a minute, then check your work:
+         lab grade sensor-install-win
+
+  Things worth trying on purpose, because they teach more than a clean run:
+   - Install WITHOUT the CID parameter and see what `lab grade` says. The service will
+     run and no AID will ever appear, because the sensor does not know which tenant to
+     talk to. That is the single most common real-world deployment mistake.
+   - Watch Host management in the console and see how long the host takes to appear.
+
+expect:
+  console: Host setup and management > Host management -- falcon-lab-win should appear
+  detection: none -- installing a sensor is not a detection
+
+grade:
+  kind: sensor
+  hint: |
+    Not registered yet. Check in this order:
+      1. Is the service there at all?   Get-Service CSFalconService
+      2. Was a CID supplied?            a missing CID gives a running service and no AID
+      3. Can the host reach the cloud?  the lab allows egress; a proxy or DNS problem would not
+    Give it 60 seconds after starting the service before grading again.
