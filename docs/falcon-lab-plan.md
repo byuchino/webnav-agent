@@ -1,6 +1,7 @@
 # CrowdStrike Falcon learning lab — plan and state
 
-**Status:** planned, not yet built. Last worked 2026-08-08.
+**Status:** infrastructure built and verified. Blocked on the Falcon sensor
+(CCID + installers). Last worked 2026-08-08.
 
 The goal the web-navigation agent actually serves: an on-demand virtual lab for learning
 CrowdStrike Falcon. A small number of VMs with sensors registered to a real CID, then
@@ -64,11 +65,11 @@ Use a dedicated internal bridge instead, which touches nothing that already exis
 - FORWARD: ACCEPT `192.168.254.34` → `10.77.0.0/24` (management host)
 - Persist the rules so they survive a host reboot
 
-## VMs to create
+## VMs (built)
 
 | VMID | Name | Spec |
 |---|---|---|
-| 900 | `falcon-lab-win` | Win11 Ent LTSC 24H2, OVMF + TPM 2.0, 6 GB, 4 cores, 64 GB, virtio-scsi + virtio-win |
+| 900 | `falcon-lab-win` | Win11 Ent LTSC 24H2, OVMF + TPM 2.0, 6 GB, 4 cores, 64 GB, **sata0 + e1000** (see lessons) |
 | 901 | `falcon-lab-lnx` | Ubuntu 24.04, 4 GB, 2 cores, 40 GB |
 
 Snapshot both at **"clean, sensor installed, pre-scenario"**. Revert-after-scenario is most of
