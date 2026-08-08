@@ -41,6 +41,56 @@ The model server is LM Studio on `192.168.254.26:1234`, model `google/gemma-4-e4
 | `agent/loose_json.py` | §14.3 | Forgiving parse and repair |
 | `agent/agent.py` | §15.1 | Observe/decide/act/report loop, dispatcher |
 
+## Watching a session someone else is driving (`observe.py`)
+
+Not in the guide — the guide's agent drives a browser nobody else is using. This is the
+inverse: attach to a tab a person is actively working in and report what is there, so you can
+tell them their time filter is set to the last hour.
+
+**The enabling fact**, which is easy to get wrong: a Chrome launched with
+`--remote-debugging-port` accepts CDP connections *while a human uses it normally*, and several
+clients can attach to the same tab at once. A separate profile is neither needed nor helpful —
+what matters is the debug flag **at launch**, since you cannot attach to a Chrome that was
+started without it.
+
+```bash
+./observe.py --list                                   # what can I attach to?
+./observe.py --match falcon --once --shot /tmp/x.png  # one report + screenshot
+./observe.py --match falcon --watch --network         # follow along, with API calls
+
+ssh -N -L 9333:127.0.0.1:9222 <host>                  # remote browser
+CDP_PORT=9333 ./observe.py --list
+```
+
+**Network capture is the diagnostic half.** In a single-page console the filters that decide
+what you see travel in the request and are often not fully visible on screen. The DOM says
+"no results"; the trace says why:
+
+```
+GET  ...console?range=1h&min_severity=0&host_group=all&auth_token=[redacted]
+```
+
+**§13 redaction is mandatory here**, not optional. A live console sends a bearer token on every
+request, and a naive trace scoops it up. `Authorization`, `Cookie`, `Set-Cookie`, CSRF and
+API-key headers are replaced with `[redacted]`, as are credential-ish query parameters — while
+the parameters that explain the query are kept, because those are the entire point.
+
+### What "read-only" guarantees
+
+`ReadOnlyClient` refuses the CDP methods that act on a page: the whole `Input` domain,
+navigation, reload, target create/close/activate, dialog handling, storage clearing. That is
+structural, so a later edit cannot quietly start clicking things in someone's live console.
+
+It does **not** block `Runtime.evaluate`, because rendering the page needs it. The honest
+guarantee is narrower: this tool never dispatches input and never runs model-authored
+JavaScript — only fixed expressions from this repo. Snapshots are taken with `mark=False`, so
+unlike the agent it does not tag elements with `data-snap-*` attributes; the observed DOM is
+left exactly as the human's browser rendered it.
+
+> A browser with remote debugging enabled is fully controllable by anything that can reach that
+> port — including reading its cookies. Keep it bound to localhost (Chrome's default), reach it
+> over the SSH tunnel, and prefer a profile signed into only what the task needs.
+
 ## The verification layer (§16.4, plus answer provenance)
 
 The guide calls this the largest gap in the reference design: production infers an action's

@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Detections — lab console</title>
+<style>
+  body { font: 15px system-ui; margin: 2rem; max-width: 48rem; }
+  .bar { display: flex; gap: 1rem; align-items: center; margin: 1rem 0; }
+  #out { border: 1px solid #ccc; padding: 1rem; margin-top: 1rem; min-height: 4rem; }
+  .muted { color: #666; font-size: 13px; }
+</style>
+
+<h1>Detections</h1>
+
+<!--
+  Stands in for a single-page security console. The point it demonstrates: the FILTERS that
+  decide what you see travel in the API request, and are only partly visible on screen. A
+  DOM snapshot shows an empty result list; the network trace shows *why* it is empty.
+-->
+
+<div class="bar">
+  <label>Time range
+    <select id="range">
+      <option value="1h">Last hour</option>
+      <option value="24h">Last 24 hours</option>
+      <option value="7d">Last 7 days</option>
+    </select>
+  </label>
+  <label>Severity
+    <select id="sev">
+      <option value="0">All</option>
+      <option value="70">High and above</option>
+    </select>
+  </label>
+  <label>Host group
+    <select id="grp">
+      <option value="all">All hosts</option>
+      <option value="falcon-lab">Falcon Lab</option>
+    </select>
+  </label>
+  <button id="go">Apply</button>
+</div>
+
+<div id="out" class="muted">No detections match the current filters.</div>
+
+<script>
+  // A real console would call its own API. This just needs to emit a request whose query
+  // string carries the filters, so an observer can read them back.
+  async function apply() {
+    const r = document.getElementById('range').value;
+    const s = document.getElementById('sev').value;
+    const g = document.getElementById('grp').value;
+    const url = 'data:application/json,' + encodeURIComponent(JSON.stringify({ ok: true }));
+    // Deliberately fetch a same-page URL carrying the filters, so the trace shows them.
+    try {
+      await fetch('?range=' + r + '&min_severity=' + s + '&host_group=' + g +
+                  '&auth_token=SECRET-should-be-redacted', { method: 'GET' });
+    } catch (e) {}
+    const none = (r === '1h');
+    document.getElementById('out').textContent = none
+      ? 'No detections match the current filters.'
+      : '1 detection: Suspicious process (falcon-lab-win)';
+  }
+  document.getElementById('go').addEventListener('click', apply);
+</script>

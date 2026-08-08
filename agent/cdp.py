@@ -50,6 +50,14 @@ class Client:
             pass
         return False
 
+    @property
+    def register(self):
+        """Event registration, e.g. `client.register.Network.requestWillBeSent(cb)`.
+        Lives on the wrapped cdp_use client; surfaced here so callers need only our type."""
+        if self._c is None:
+            raise RuntimeError("client is not started")
+        return self._c.register
+
     async def send(self, method, params=None):
         return await self._c.send_raw(method, params or {})
 

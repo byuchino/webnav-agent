@@ -24,6 +24,10 @@ SETTLE_MAX_MS = 3000
 _BUILD_TMPL = r"""
 (() => {
   const ATTR = "__ATTR__";
+  // MARK=false renders the tree WITHOUT tagging elements. Observation of a live session the
+  // human is using must not mutate their DOM; indices remain useful for describing things
+  // ("the control at [12]") even when nothing can be acted on by them.
+  const MARK = __MARK__;
   const MAXC = __MAXCONTROLS__, MAXV = __MAXVISITED__, MAXL = __MAXLINES__,
         DEADLINE = performance.now() + __BUDGET__;
   const lines = [], controls = [], errors = [];
@@ -252,7 +256,7 @@ _BUILD_TMPL = r"""
           const generic = (tag === 'DIV' || tag === 'SPAN' || tag === 'SECTION');
           const swallows = generic && (hasInteractive(el) || (el.innerText||'').length > 200);
           if(swallows){ walk(el, depth, ctx); continue; }
-          el.setAttribute(ATTR, idx);
+          if (MARK) el.setAttribute(ATTR, idx);
           const nm = accName(el), r = role(el) || tag.toLowerCase();
           const rc = rowCtx(el);
           const rcTag = (rc && rc.toLowerCase() !== nm.toLowerCase()) ? ('  (in: ' + rc + ')') : '';
@@ -301,7 +305,7 @@ _BUILD_TMPL = r"""
 """
 
 
-async def build(client, prev_tokens=()):
+async def build(client, prev_tokens=(), mark=True):
     """One round-trip. Returns an env dict; the action layer needs `token` and `_fp`.
 
     A fresh random attribute name per snapshot (§16.3) means indices from a stale snapshot
@@ -324,6 +328,7 @@ async def build(client, prev_tokens=()):
 
     token = secrets.token_hex(4)
     js = (_BUILD_TMPL.replace("__ATTR__", "data-snap-" + token)
+          .replace("__MARK__", "true" if mark else "false")
           .replace("__MAXCONTROLS__", str(MAX_CONTROLS))
           .replace("__MAXVISITED__", str(MAX_VISITED))
           .replace("__MAXLINES__", str(MAX_LINES))
