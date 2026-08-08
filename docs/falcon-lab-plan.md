@@ -85,6 +85,78 @@ documented expected outcome, so there is a right answer to check an investigatio
 samples give an unreproducible mess where a missed detection is indistinguishable from a sample
 that never detonated — and they would pollute a production detection queue.
 
+## Build log: what exists (2026-08-08)
+
+**Network — done and verified.** `vmbr1` at `10.77.0.1/24` on proxmox-1, defined in its own
+`/etc/network/interfaces.d/vmbr1-falcon-lab` so the file defining `vmbr0` was never touched.
+Brought up with `ifup vmbr1` alone, never a full `ifreload`. Verified from *inside* a lab VM:
+
+```
+blocked  192.168.254.27:22 / :8006 / :111     (the hypervisor itself)
+blocked  192.168.254.1:22, .26:22, .34:22     (LAN)
+blocked  10.77.0.1:22 / :8006                 (gateway side)
+https: 200,  dns ok,  gateway ping ok
+```
+
+> Two isolation gaps found by testing from the guest rather than trusting the ruleset:
+> - **FORWARD rules do not cover the hypervisor.** Traffic to `192.168.254.27` is destined *to*
+>   the host, so it traverses `INPUT`, not `FORWARD`. The lab could reach Proxmox SSH and the
+>   web UI until explicit `INPUT` rules were added (ICMP allowed, everything else rejected).
+> - **The management host needs a route**: `ip route add 10.77.0.0/24 via 192.168.254.27`.
+>   **Not persistent** — re-add after a reboot of the management box.
+
+**VM 901 `falcon-lab-lnx` — done.** Ubuntu 24.04 cloud image + cloud-init, SSH-ready at
+`10.77.0.11` as `labadmin` with `~/.ssh/falcon_lab_ed25519`. Snapshot `clean-cloudinit` taken.
+Fully hands-off to rebuild.
+
+**VM 900 `falcon-lab-win` — OS installs unattended; first-boot config does NOT run.**
+Windows 11 Enterprise LTSC 2024 installs with zero interaction: disk partitioned, edition
+selected, `labadmin` created, auto-logon to desktop. What does not happen is
+`FirstLogonCommands`, so the machine has no IP and no SSH, and is currently reachable only
+through the Proxmox console.
+
+### Windows lessons, each of which cost a cycle
+
+1. **UEFI media waits for a keypress.** *"Press any key to boot from CD or DVD"* is not
+   skippable from the answer file; with a blank disk it then reports "No bootable option".
+   Drive it with `qm sendkey 900 ret` in a loop for the first ~30s of boot. Later boots must
+   NOT get keys, or Setup restarts in a loop.
+2. **virtio needs drivers in the installed OS, not just WinPE.** `drvload` in a
+   `RunSynchronous` makes the disk visible to Setup — the image applies fine — and then
+   Windows bluescreens with `INACCESSIBLE_BOOT_DEVICE` on first boot, because the driver was
+   never added to the target. `Microsoft-Windows-PnpCustomizationsWinPE/DriverPaths` does add
+   it, but a `DriverPath` that does not exist is a hard error and the CD letter is unknowable
+   in WinPE — that route fails with `0x80070002`. **Resolution: `sata0` + `e1000`, both
+   natively supported.** A detection lab does not care about disk throughput.
+3. **Select the image explicitly.** This media has two editions and no `ei.cfg`; index 1 is
+   LTSC 2024, index 2 is the N edition. Read the names out of `install.wim` rather than
+   guessing (there is a WIM XML parser inline in the session history).
+4. **Drive letters in the installed OS**: `C:` system, `D:` Windows ISO, `E:` virtio,
+   `F:` UNATTEND.
+5. **A fresh install resets the evaluation clock** — the first install showed "License is
+   expired" (the 2024 image is past its built-in expiry), the reinstall showed
+   "valid for 90 days".
+6. `tools/qm_type.py` types into a VM console via `qm sendkey`, for when a guest has no
+   network and the virtual keyboard is the only way in.
+
+### The open bug and the fix to try first
+
+`FirstLogonCommands` never runs. Ruled out: the script is present and reachable
+(`Test-Path F:\lab\setup.ps1` -> True) and it never started (`C:\lab-setup.log` -> False, and
+the transcript is its first statement). Removing the deprecated `SkipMachineOOBE`/
+`SkipUserOOBE` did not fix it and re-introduced the OOBE region prompts, which need a
+`Microsoft-Windows-International-Core` component in the **oobeSystem** pass (only the
+`-WinPE` variant was present, in `windowsPE`).
+
+**Do not keep debugging this through the console.** The durable fix is to stop making
+reachability depend on a first-logon script at all: run **DHCP on `vmbr1`** (dnsmasq on
+proxmox-1, or a Proxmox SDN simple zone). Then Windows gets an address from its default
+configuration, SSH can be installed remotely, and `setup.ps1` becomes a convenience rather
+than a single point of failure. That also removes the static-IP step from the Linux side.
+
+Note also that manual console attempts failed with `Windows System Error 5` because a
+Start-menu PowerShell is **not elevated**; `FirstLogonCommands` would have run elevated.
+
 ## Blockers
 
 1. **CCID and sensor installers** (Windows `.exe`, Ubuntu `.deb`) from Host setup and
