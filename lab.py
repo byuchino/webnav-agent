@@ -149,9 +149,11 @@ def cmd_sensor(a):
         print("\n".join(f"  {f}" for f in found) if found else
               f"  none staged. Download from the Falcon console into {config.INSTALLER_DIR}")
     elif a.action == "install":
-        if not a.ccid:
-            sys.exit("--ccid is required (CID with checksum, from Sensor downloads)")
-        r = sensor.install(a.host, a.ccid, a.installer)
+        cid = a.ccid or config.ccid()
+        if not cid:
+            sys.exit(f"no CID. Put it in {config.CCID_FILE} (see docs/lab-cli.md) "
+                     f"rather than passing it on the command line.")
+        r = sensor.install(a.host, cid, a.installer)
         print(f"{a.host:5} installed {r['installer']} rc={r['rc']}")
         print(f"      {sensor.verify(a.host).get('verdict')}")
     elif a.action == "remove":

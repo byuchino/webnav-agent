@@ -103,7 +103,8 @@ long-term home.
 ## Sensor installers
 
 Download them from the Falcon console (Host setup and management → Sensor downloads) into
-`~/falcon-installers` — local to wherever the CLI runs, because that is where the lab SSH key
+`~/falcon-installers`. This can also be automated against a signed-in console session — see
+"Fetching installers" below — local to wherever the CLI runs, because that is where the lab SSH key
 already is. Staging them on the hypervisor would mean copying a private key onto it for no
 benefit. The directory is gitignored, along with `*.deb`, `*.rpm` and `WindowsSensor*.exe`;
 these are licensed binaries and must never be committed.
@@ -113,3 +114,27 @@ these are licensed binaries and must never be committed.
 ./lab.py sensor verify          # state of both guests
 ./lab.py -v sensor verify win   # with cid/aid/rfm detail
 ```
+
+### Fetching installers automatically
+
+With a Chrome signed in to the console and reachable over the tunnel, the installers can be
+pulled without leaving the terminal. The older-versions page is the one worth using:
+
+```
+/sensor-downloads/older-versions?os=Windows&osVersion=
+/sensor-downloads/older-versions?os=Ubuntu&osVersion=
+```
+
+Each row carries the version, the platform, a **SHA256**, and an icon button whose only label
+is `aria-label="Download"` — there is no link to follow, so the button must be clicked. Set
+`Browser.setDownloadBehavior` to a path on the *browser's* machine first, then copy the file
+back. Always verify against the SHA256 the console lists; the page gives it to you, so there
+is no reason to trust the transfer blindly.
+
+Deliberately **not** wired into `lab.py`. These are licensed binaries tied to a subscription,
+and a repo other people deploy should not automate retrieving them by default. The manual
+download stays the documented path; this is a convenience for a tenant you own.
+
+> A note on choosing a version: N-2 is a better lab default than the latest. The sensor
+> update policy exercises (objective 5.2) only demonstrate anything if there is a version to
+> update *from*.

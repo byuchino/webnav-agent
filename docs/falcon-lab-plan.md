@@ -170,9 +170,13 @@ Note also that debugging this through the console was a dead end: a Start-menu P
 
 ## Blockers
 
-1. **CCID and sensor installers** (Windows `.exe`, Ubuntu `.deb`) from Host setup and
-   management → Sensor downloads. Headless CDP cannot reliably pull files, so this is a manual
-   download regardless of the browser-only decision.
+1. ~~CCID and sensor installers~~ — **installers done.** Both N-2 builds are staged in
+   `~/falcon-installers` and verified against the SHA256 the console publishes:
+   `FalconSensor_Windows.exe` (7.38.21003) and `falcon-sensor_7.37.0-19004_amd64.deb`. They
+   were fetched through the signed-in console session, contrary to my earlier claim that
+   headless CDP could not pull files — `Browser.setDownloadBehavior` plus a click works fine.
+   Still outstanding: the **CID**, which goes in `~/.falcon-lab/ccid` (0600) rather than on a
+   command line.
 2. **Falcon session in the dedicated profile** — sign in headed on the Windows box with
    `--user-data-dir=C:\cdp-profile`, complete MFA, close it. See the README's remote-browser
    section.

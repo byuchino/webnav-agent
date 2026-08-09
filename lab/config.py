@@ -66,6 +66,23 @@ GUESTS = [k for k, v in HOSTS.items() if v["snapshots"]]
 # key onto it for no benefit.
 INSTALLER_DIR = os.environ.get(
     "LAB_INSTALLERS", str(pathlib.Path.home() / "falcon-installers"))
+# The CID-with-checksum lets a sensor register into your tenant, so it never belongs on a
+# command line where it lands in shell history and process listings. Keep it in a 0600 file:
+#   mkdir -p ~/.falcon-lab && chmod 700 ~/.falcon-lab
+#   read -rs CCID && printf '%s' "$CCID" > ~/.falcon-lab/ccid && chmod 600 ~/.falcon-lab/ccid
+CCID_FILE = pathlib.Path(os.environ.get(
+    "LAB_CCID_FILE", pathlib.Path.home() / ".falcon-lab" / "ccid"))
+
+
+def ccid():
+    """The configured CID, or None. Never logged or printed by the CLI."""
+    try:
+        v = CCID_FILE.read_text().strip()
+        return v or None
+    except OSError:
+        return None
+
+
 WIN_STAGE = r"C:\lab"
 LNX_STAGE = "/opt/lab"
 
