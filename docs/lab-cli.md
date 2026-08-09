@@ -103,11 +103,13 @@ long-term home.
 ## Sensor installers
 
 Download them from the Falcon console (Host setup and management → Sensor downloads) into
-`~/falcon-installers`. This can also be automated against a signed-in console session — see
-"Fetching installers" below — local to wherever the CLI runs, because that is where the lab SSH key
+`~/falcon-installers` — local to wherever the CLI runs, because that is where the lab SSH key
 already is. Staging them on the hypervisor would mean copying a private key onto it for no
 benefit. The directory is gitignored, along with `*.deb`, `*.rpm` and `WindowsSensor*.exe`;
 these are licensed binaries and must never be committed.
+
+Retrieval can also be automated against a signed-in console session — see
+[Fetching installers automatically](#fetching-installers-automatically) below.
 
 ```
 ./lab.py sensor installers      # what is staged
