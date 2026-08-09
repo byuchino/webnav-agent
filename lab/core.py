@@ -78,10 +78,44 @@ def snapshots(name):
     return names
 
 
-def snapshot_create(name, snap, description=""):
+def shutdown(name, timeout=180):
+    """Graceful ACPI shutdown, force-stopped if the guest will not comply."""
     h = config.host(name)
+    if vm_status(name) == "stopped":
+        return "already stopped"
+    pve(f"{_ctl(h)} shutdown {h['vmid']} --timeout {timeout} --forceStop 1",
+        timeout=timeout + 120)
+    for _ in range(30):
+        if vm_status(name) == "stopped":
+            return "stopped"
+        time.sleep(2)
+    raise LabError(f"{name}: would not shut down")
+
+
+def snapshot_create(name, snap, description="", live=False):
+    """Snapshot a guest, shutting it down cleanly first by default.
+
+    A baseline exists to be a reliable rollback point, and a LIVE snapshot of Windows is not
+    one. Proxmox without --vmstate captures the disk only; taken while NTFS has writes in
+    flight, the result is crash-consistent at best. That is not theoretical -- the first
+    `clean-withSensor` snapshot here was taken live and its rollback would not boot:
+
+        \\WINDOWS\\System32\\drivers\\WindowsTrustedRTProxy.sys  error 0xc0000225
+
+    A critical driver caught mid-write. Linux survived identical treatment because ext4
+    journals; NTFS did not. Shutting down first costs a couple of minutes and makes every
+    revert a clean cold boot.
+    """
+    h = config.host(name)
+    was_running = vm_status(name) == "running"
+    if not live and h["kind"] == "qemu":
+        shutdown(name)
     d = f" --description {shlex.quote(description)}" if description else ""
-    pve(f"{_ctl(h)} snapshot {h['vmid']} {shlex.quote(snap)}{d}", timeout=600)
+    try:
+        pve(f"{_ctl(h)} snapshot {h['vmid']} {shlex.quote(snap)}{d}", timeout=900)
+    finally:
+        if was_running and vm_status(name) != "running":
+            pve(f"{_ctl(h)} start {h['vmid']}", timeout=180)
     return snap
 
 
@@ -101,7 +135,33 @@ def revert(name, baseline="bare", wait=True):
                      f"\n                  ./lab.py snapshot {name} {snap} -d 'sensor registered'")
         raise LabError(f"{name}: no {snap!r} snapshot yet (have: {have}){extra}")
     pve(f"{_ctl(h)} rollback {h['vmid']} {shlex.quote(snap)}", timeout=600)
-    pve(f"{_ctl(h)} start {h['vmid']} || true")
+
+    # Proxmox holds a lock while the rollback finalises, so a start issued immediately after
+    # fails with "VM is locked". This used to be `start || true`, which hid that completely:
+    # the scenario reported "NOT READY" and the guest simply sat there stopped. Wait for the
+    # lock to clear, then start, and let a genuine failure raise.
+    for _ in range(30):
+        try:
+            locked = pve(f"grep -c '^lock:' /etc/pve/{'lxc' if h['kind'] == 'lxc' else 'qemu-server'}"
+                         f"/{h['vmid']}.conf 2>/dev/null || echo 0")
+        except LabError:
+            locked = "0"
+        if locked.strip() in ("0", ""):
+            break
+        time.sleep(2)
+
+    last = None
+    for attempt in range(4):
+        try:
+            if vm_status(name) != "running":
+                pve(f"{_ctl(h)} start {h['vmid']}", timeout=180)
+            last = None
+            break
+        except LabError as e:
+            last = e
+            time.sleep(5)
+    if last is not None:
+        raise LabError(f"{name}: rolled back to {snap} but would not start: {last}")
     if not wait:
         return {"snapshot": snap, "ready": None}
     ok, secs = wait_ready(name)
@@ -122,7 +182,7 @@ def reachable(name, timeout=4):
         return False
 
 
-def wait_ready(name, limit=300):
+def wait_ready(name, limit=480):
     t0 = time.time()
     while time.time() - t0 < limit:
         if reachable(name):

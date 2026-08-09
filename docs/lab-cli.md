@@ -34,6 +34,26 @@ error: win: no 'clean-withSensor' snapshot yet (have: clean-preSensor)
                   ./lab.py snapshot win clean-withSensor -d 'sensor registered'
 ```
 
+## Snapshots must be taken with the guest shut down
+
+`./lab.py snapshot` shuts the guest down first, and that default is not caution — it is the
+difference between a rollback point and a corrupt one.
+
+Proxmox without `--vmstate` captures the disk only. Taken while Windows has writes in flight,
+the result is crash-consistent at best. The first `clean-withSensor` snapshot here was taken
+live, and its rollback would not boot:
+
+```
+Recovery -- Your PC/Device needs to be repaired
+\WINDOWS\System32\drivers\WindowsTrustedRTProxy.sys   error 0xc0000225
+```
+
+A critical driver caught mid-write. Worse, rolling back *applied* that image, so the working
+install was gone until an earlier snapshot rescued it. Linux survived identical treatment
+because ext4 journals; NTFS did not — so "it worked on the Linux guest" is not evidence.
+
+`--live` exists for when you want speed and accept the risk. Do not use it for a baseline.
+
 ## Manual scenarios
 
 Installing a sensor is on the CCFA syllabus, so it is an exercise rather than setup. Those

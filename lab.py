@@ -64,8 +64,9 @@ def cmd_stop(a):
 
 
 def cmd_snapshot(a):
-    core.snapshot_create(a.host, a.name, a.description or "")
-    print(f"{a.host:5} snapshot {a.name} taken")
+    core.snapshot_create(a.host, a.name, a.description or "", live=a.live)
+    how = "live (NOT a reliable rollback point for Windows)" if a.live else "clean shutdown"
+    print(f"{a.host:5} snapshot {a.name} taken ({how})")
 
 
 def cmd_scenarios(a):
@@ -142,8 +143,17 @@ def cmd_sensor(a):
             print(f"{name:5} {r.get('verdict', '?')}")
             if a.verbose:
                 for k in ("service", "version", "cid", "aid", "rfm"):
-                    if r.get(k) is not None:
-                        print(f"      {k:8} {r[k]}")
+                    v = r.get(k)
+                    if v is None:
+                        continue
+                    # The CID identifies the tenant and is what lets a sensor register into
+                    # it; the AID identifies the host. Neither belongs in a terminal, a log
+                    # or a pasted transcript. Confirm they are set, do not reproduce them.
+                    if k == "cid":
+                        v = "set" if v else "not set"
+                    elif k == "aid":
+                        v = f"set ({str(v)[:6]}...)"
+                    print(f"      {k:8} {v}")
     elif a.action == "installers":
         found = sensor.installers()
         print("\n".join(f"  {f}" for f in found) if found else
@@ -190,6 +200,9 @@ def main():
     s.add_argument("host", choices=config.GUESTS)
     s.add_argument("name")
     s.add_argument("-d", "--description")
+    s.add_argument("--live", action="store_true",
+                   help="snapshot without shutting down; faster, but a live Windows snapshot "
+                        "can capture NTFS mid-write and produce an unbootable rollback")
     s.set_defaults(fn=cmd_snapshot)
 
     sub.add_parser("scenarios", help="list scenarios").set_defaults(fn=cmd_scenarios)

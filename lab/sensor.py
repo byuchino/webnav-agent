@@ -46,13 +46,17 @@ def _verify_windows(name):
 
 
 def _verify_linux(name):
-    # `systemctl is-active` prints "inactive" for a unit that does not exist at all, so it
-    # cannot distinguish "not installed" from "installed but stopped". Presence of falconctl
-    # is the honest test.
+    # Two traps here, both of which produced a confident "sensor NOT installed" on a host
+    # that had one:
+    #   - `systemctl is-active` prints "inactive" for a unit that does not exist at all, so
+    #     it cannot distinguish "not installed" from "installed but stopped".
+    #   - /opt/CrowdStrike is root-only, so testing for the falconctl binary as an ordinary
+    #     user returns Permission denied, not "missing". Ask dpkg instead; it needs no root.
     rc, out, _ = core.guest(name, (
-        "printf 'pkg=%s\\n' \"$([ -x /opt/CrowdStrike/falconctl ] && echo yes || echo no)\"; "
+        "printf 'pkg=%s\\n' \"$(dpkg-query -W -f='${Status}' falcon-sensor 2>/dev/null "
+        "| grep -q 'install ok installed' && echo yes || echo no)\"; "
         "printf 'svc=%s\\n' \"$(systemctl is-active falcon-sensor 2>/dev/null || echo inactive)\"; "
-        "if [ -x /opt/CrowdStrike/falconctl ]; then "
+        "if sudo -n test -x /opt/CrowdStrike/falconctl 2>/dev/null; then "
         "  printf 'cid=%s\\n' \"$(sudo -n /opt/CrowdStrike/falconctl -g --cid 2>/dev/null | tr -d '\\n')\"; "
         "  printf 'aid=%s\\n' \"$(sudo -n /opt/CrowdStrike/falconctl -g --aid 2>/dev/null | tr -d '\\n')\"; "
         "  printf 'rfm=%s\\n' \"$(sudo -n /opt/CrowdStrike/falconctl -g --rfm-state 2>/dev/null | tr -d '\\n')\"; "
@@ -65,7 +69,9 @@ def _verify_linux(name):
         if not raw:
             return None
         m = re.search(r'[=:]\s*"?([^",]+)"?', raw)
-        return (m.group(1) if m else raw).strip() or None
+        v = (m.group(1) if m else raw).strip()
+        # falconctl terminates its values with a period: `rfm-state=false.`
+        return v.rstrip(". \t") or None
 
     svc = d.get("svc", "unknown")
     rfm = _val(d.get("rfm"))
@@ -139,8 +145,21 @@ def install(name, ccid, installer=None):
         remote = f"{config.WIN_STAGE}\\{installer}"
         core.guest(name, f"New-Item -ItemType Directory -Force -Path '{config.WIN_STAGE}' | Out-Null")
         core.push(name, local, f"{config.WIN_STAGE}/{installer}")
-        rc, out, err = core.guest(
-            name, f"& '{remote}' /install /quiet /norestart CID={ccid}; $LASTEXITCODE", timeout=900)
+        # Capture the INSTALLER's exit code, not ssh's. The previous form printed
+        # $LASTEXITCODE to stdout and reported ssh's rc, so a failed install looked like
+        # rc=0. CrowdStrike's installer is silent by design; /log is the only way to see why.
+        rc, out, err = core.guest(name, (
+            f"$p = Start-Process -FilePath '{remote}' -Wait -PassThru -ArgumentList "
+            f"'/install','/quiet','/norestart','/log','C:\\lab\\sensor_install.log',"
+            f"'CID={ccid}'; "
+            "\"exit=$($p.ExitCode)\""), timeout=1800)
+        code = ""
+        m = re.search(r"exit=(-?\d+)", out or "")
+        if m:
+            code = m.group(1)
+            if code != "0":
+                err = (err + f" installer exit code {code}; see C:\\lab\\sensor_install.log").strip()
+                rc = int(code)
     else:
         remote = f"{config.LNX_STAGE}/{installer}"
         core.guest(name, f"sudo -n mkdir -p {config.LNX_STAGE} && sudo -n chown $USER {config.LNX_STAGE}")
