@@ -15,3 +15,6 @@ falcon-installers/
 *.deb
 *.rpm
 WindowsSensor*.exe
+
+# Fetched vendor documentation — CrowdStrike copyright, never commit
+falcon-docs/
