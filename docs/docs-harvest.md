@@ -59,6 +59,23 @@ after each page. Without it, "Users and Roles" yields 121 characters and looks c
 - **Rate.** `DOCS_DELAY` (default 2.5s) between pages. This is a vendor portal, not a scraping
   target; fetch the sections the guide names rather than mirroring the site.
 
+## What the full run produced (2026-08-09)
+
+All five books, no session expiry, ~80 minutes: **378 files, 3.1 MB.**
+
+| Directory | Files | Size |
+|---|---|---|
+| `falcon-management` | 121 | 1.0 MB |
+| `endpoint-security` | 121 | 1.0 MB |
+| `crowdstrike-apis` | 61 | 460 KB |
+| `crowdstrike-store` | 41 | 460 KB |
+| `audit-logs` | 34 | 140 KB |
+
+Every exam objective has material behind it. The thinnest is **2.4 (RFM / troubleshooting)**
+at 11 files and **2 (Sensor Deployment)** at 16 — worth knowing when writing those scenarios,
+since sensor deployment is the one domain where the lab exercises carry more weight than the
+docs do.
+
 ## Resuming
 
 Progress is per-file, so an interrupted run loses nothing already written. Re-run
