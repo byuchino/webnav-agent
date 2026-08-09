@@ -32,6 +32,7 @@ with attributes; the observed DOM is left exactly as the human's browser rendere
 """
 import argparse
 import asyncio
+import base64
 import os
 import re
 import sys
@@ -91,17 +92,41 @@ def redact_headers(headers):
     return out
 
 
+# Response bodies carry credentials too, and more variably than headers do. A session
+# endpoint returns a token in JSON; a docs page does not. Redact by key name rather than
+# trying to recognise the value.
+_SECRET_KEY = re.compile(
+    r'("(?:[a-z_]*(?:token|secret|password|passwd|api[_-]?key|credential|session[_-]?id)'
+    r'[a-z_]*)"\s*:\s*)"[^"]*"', re.I)
+_BEARER = re.compile(r'\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{12,}', re.I)
+
+
+def redact_body(text):
+    if not text:
+        return text
+    text = _SECRET_KEY.sub(r'\1"[redacted]"', text)
+    return _BEARER.sub(r"\1 [redacted]", text)
+
+
 class NetworkRecorder:
     """Requests the page makes, with credentials stripped.
 
     For a single-page console this is usually more diagnostic than the DOM: the filters that
     decide what you see — time range, host group, severity — travel in the request, and are
     often not visible on screen at all.
+
+    With `fetch_bodies()` it goes further and reads the responses. That matters because a
+    console is an SPA talking to its own REST API: what the page renders is a view of JSON
+    the browser already received, and reading that JSON is far more reliable than parsing
+    the DOM it was turned into. It is also sometimes the only way in — CrowdStrike's docs
+    portal renders its article body inside an iframe that leaves `document.body` with 20
+    characters of text, while the content sits in plain sight in an API response.
     """
 
     def __init__(self):
         self.reqs = {}
         self.order = []
+        self.finished = []
 
     def attach(self, client):
         def on_req(ev, *_):
@@ -128,8 +153,61 @@ class NetworkRecorder:
             except Exception:
                 pass
 
+        def on_fin(ev, *_):
+            try:
+                rid = ev.get("requestId")
+                if rid in self.reqs:
+                    self.finished.append(rid)
+            except Exception:
+                pass
+
         client.register.Network.requestWillBeSent(on_req)
         client.register.Network.responseReceived(on_res)
+        client.register.Network.loadingFinished(on_fin)
+
+    async def fetch_bodies(self, client, match=None, max_bytes=400_000, limit=40):
+        """Pull response bodies for finished requests.
+
+        §13's rule: bodies are only available AFTER loadingFinished, and Chrome evicts them
+        from its buffer, so call this promptly rather than at the end of a long session.
+        `match` is a substring filter on the URL — without it you fetch every image and font
+        on the page for nothing.
+        """
+        got = 0
+        for rid in list(self.finished):
+            if got >= limit:
+                break
+            r = self.reqs.get(rid)
+            if not r or r.get("body_text") is not None:
+                continue
+            if match and match not in r.get("url", ""):
+                continue
+            try:
+                res = await client.send("Network.getResponseBody", {"requestId": rid})
+            except Exception:
+                continue
+            body = res.get("body") or res.get("result", {}).get("body", "")
+            if res.get("base64Encoded") or res.get("result", {}).get("base64Encoded"):
+                try:
+                    body = base64.b64decode(body).decode("utf-8", "replace")
+                except Exception:
+                    continue
+            r["body_text"] = redact_body(body)[:max_bytes]
+            got += 1
+        return got
+
+    def bodies(self, match=None, min_len=0):
+        """Captured responses, newest last."""
+        out = []
+        for rid in self.order:
+            r = self.reqs.get(rid) or {}
+            b = r.get("body_text")
+            if b is None or len(b) < min_len:
+                continue
+            if match and match not in r.get("url", ""):
+                continue
+            out.append({"url": r["url"], "status": r.get("status"), "body": b})
+        return out
 
     def drain(self, only_api=True):
         """Return and clear what has accumulated. XHR/fetch only by default — images, fonts
