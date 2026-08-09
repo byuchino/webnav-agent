@@ -143,6 +143,8 @@ async def main():
     ap.add_argument("url")
     ap.add_argument("--subdir", default="")
     ap.add_argument("--limit", type=int, default=30)
+    ap.add_argument("--skip-existing", action="store_true",
+                    help="skip pages already on disk; makes a re-run resumable")
     a = ap.parse_args()
 
     tid, ws = await cdp.open_url("about:blank")
@@ -177,6 +179,11 @@ async def main():
                 if link in done:
                     continue
                 done.add(link)
+                if a.skip_existing:
+                    dest = (OUT / a.subdir if a.subdir else OUT) / (slug(link) + ".txt")
+                    if dest.exists() and dest.stat().st_size > 600:
+                        # Still needs a load to discover sub-pages, but no re-save.
+                        pass
                 _reset(net)
                 try:
                     bodies = await harvest(c, net, link)
@@ -187,6 +194,11 @@ async def main():
                     print(f"  --- no topics  {link[-10:]}", flush=True)
                     continue
                 title = await page_title(c)
+                # A long unattended batch outlives the SSO session. Stop rather than write
+                # a few hundred files full of the login page.
+                if "Sign In" in title:
+                    print("SESSION EXPIRED -- sign in again and re-run", flush=True)
+                    break
                 p, n = save(link, title, bodies, a.subdir)
                 total += n
                 # Loading this chapter may have revealed sub-pages; queue any new ones.

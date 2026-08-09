@@ -1,7 +1,10 @@
 # CrowdStrike Falcon learning lab — plan and state
 
-**Status:** infrastructure built and verified. Blocked on the Falcon sensor
-(CCID + installers). Last worked 2026-08-08.
+**Status:** infrastructure built and verified; CLI and web panel working; CCFA reference
+documentation harvested. Blocked on the Falcon sensor (CCID + installers). Next work is the
+repo split and the scenario library. Last worked 2026-08-09.
+
+See also `docs/lab-cli.md` (driving the lab) and `docs/docs-harvest.md` (reference docs).
 
 The goal the web-navigation agent actually serves: an on-demand virtual lab for learning
 CrowdStrike Falcon. A small number of VMs with sensors registered to a real CID, then
