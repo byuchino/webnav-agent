@@ -187,9 +187,28 @@ never counted as verification.
 ## The web panel
 
 `./lab.py web` serves the same functions as a page, so you can run scenarios yourself without
-involving an assistant at all. It must run somewhere that can reach both the hypervisor and
-`10.77.0.0/24` — this workstation qualifies; the always-on `docker-vm` would be a better
-long-term home.
+involving an assistant at all — which is the whole economic point of this package. It must run
+somewhere that can reach both the hypervisor and `10.77.0.0/24`, and if console checks are to
+work it also needs `CDP_PORT` pointing at a browser signed in to Falcon:
+
+```bash
+CDP_PORT=9333 ./lab.py web        # then http://<this-host>:8901
+```
+
+Scenarios are grouped by CCFA domain, each card showing its objective, verification kinds and
+prerequisites. Grading renders every check individually rather than a single verdict, so a
+mixed result is legible at a glance:
+
+```
+  FAIL   Falcon Lab group exists     not found in the console's response: 'Falcon Lab'
+  --     understanding               self-checked (not verified automatically)
+         ☐ Both lab hosts are members of the group
+  NOT YET
+```
+
+Host cards offer revert buttons per **baseline** (`bare`, `sensor`) rather than per raw
+snapshot name — the page speaks the same vocabulary the scenarios do, instead of guessing
+which snapshot means what from its name.
 
 > **No authentication, deliberately.** It can revert VMs and execute code inside guests. Put it
 > somewhere only you can reach and do not expose it beyond your own network.

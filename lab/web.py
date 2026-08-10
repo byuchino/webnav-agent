@@ -1,15 +1,15 @@
 """Control panel for the lab.
 
-The point of this is economic: driving scenarios through an assistant costs a conversation
-every time, and a scenario run is a fixed sequence that does not need one. This page runs the
-same functions the CLI does, so routine work costs nothing.
+The point is economic: driving scenarios through an assistant costs a conversation every
+time, and a scenario run is a fixed sequence that does not need one. This page calls the same
+functions the CLI does, so routine work costs nothing at all.
 
-It binds to the machine running it, which must be able to reach both the hypervisor and the
-lab subnet. Deliberately no authentication -- put it somewhere only you can reach, and do not
-expose it beyond your own network. It can revert VMs and run code inside guests.
+It must run somewhere that can reach both the hypervisor and the lab subnet.
+
+> **No authentication, deliberately.** It can revert VMs and execute code inside guests. Put
+> it somewhere only you can reach and do not expose it beyond your own network.
 """
 import asyncio
-import html
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -17,6 +17,12 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from . import config, core, scenarios, sensor
 
 app = FastAPI(title="Falcon lab")
+
+DOMAINS = {
+    0: "Foundations", 1: "User Management", 2: "Sensor Deployment",
+    3: "Host Management", 4: "Group Creation", 5: "Policy Application",
+    6: "Rules Configuration", 7: "Dashboards and Reports", 8: "Workflows",
+}
 
 
 async def _off(fn, *a, **kw):
@@ -29,6 +35,11 @@ async def api_status():
     out = []
     for name in list(config.HOSTS):
         st = await _off(core.status, name)
+        h = config.HOSTS[name]
+        have = set(st.get("snapshots") or [])
+        # Report BASELINES, not raw snapshot names: the UI should speak the same vocabulary
+        # the scenarios do, rather than making the page guess which snapshot means what.
+        st["baselines"] = [b for b, snap in (h.get("snapshots") or {}).items() if snap in have]
         if name in config.GUESTS:
             st["sensor"] = await _off(sensor.verify, name)
         out.append(st)
@@ -38,10 +49,13 @@ async def api_status():
 @app.get("/api/scenarios")
 async def api_scenarios():
     all_ = await _off(scenarios.load_all)
-    return JSONResponse([
-        {k: v for k, v in s.items() if k != "steps"} for s in
-        sorted(all_.values(), key=lambda x: x["_file"])
-    ])
+    out = []
+    for s in sorted(all_.values(), key=lambda x: (x.get("domain", 0), x["id"])):
+        d = {k: v for k, v in s.items() if k not in ("steps", "setup")}
+        d["kinds"] = sorted({v["kind"] for v in (s.get("verify") or [])})
+        d["domain_name"] = DOMAINS.get(s.get("domain", 0), "?")
+        out.append(d)
+    return JSONResponse(out)
 
 
 @app.post("/api/run/{sid}")
@@ -68,47 +82,58 @@ async def api_revert(name: str, baseline: str):
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
-PAGE = """
+PAGE = r"""
 <title>Falcon lab</title>
 <style>
   :root{--bg:#f4f5f7;--card:#fff;--ink:#15181d;--dim:#5d6672;--line:#d9dee5;
-        --ok:#2c7a52;--bad:#a33528;--warn:#8a5a12;--accent:#1f4f8f}
+        --ok:#2c7a52;--bad:#a33528;--warn:#8a5a12;--accent:#1f4f8f;--soft:#eef1f4}
   @media (prefers-color-scheme:dark){:root{--bg:#12151a;--card:#1a1f26;--ink:#e6e9ee;
-    --dim:#98a2b0;--line:#2c333d;--ok:#5cc08a;--bad:#e58072;--warn:#d9a44a;--accent:#7aa9e8}}
+    --dim:#98a2b0;--line:#2c333d;--ok:#5cc08a;--bad:#e58072;--warn:#d9a44a;
+    --accent:#7aa9e8;--soft:#20262e}}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:15px/1.55 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-  .wrap{max-width:980px;margin:0 auto;padding:28px 20px 60px}
+  .wrap{max-width:1000px;margin:0 auto;padding:26px 20px 70px}
   h1{font-size:20px;margin:0 0 4px;letter-spacing:-.01em}
-  .sub{color:var(--dim);font-size:13px;margin-bottom:22px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:20px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:8px;
-        padding:14px 16px;margin-bottom:12px}
-  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+        padding:13px 15px;margin-bottom:10px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
-  .pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--line)}
+  .pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;
+        border:1px solid var(--line);color:var(--dim)}
   .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)} .dim{color:var(--dim)}
-  button{font:inherit;font-size:13px;font-weight:550;padding:6px 13px;border-radius:6px;
+  button{font:inherit;font-size:13px;font-weight:550;padding:5px 12px;border-radius:6px;
          border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
-  button:hover{border-color:var(--accent);color:var(--accent)}
-  button:disabled{opacity:.5;cursor:default}
+  button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  button:disabled{opacity:.45;cursor:default}
   button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-  h2{font-size:15px;margin:26px 0 10px}
+  button.primary:hover:not(:disabled){color:#fff;opacity:.9}
+  h2{font-size:12px;margin:24px 0 8px;text-transform:uppercase;letter-spacing:.09em;
+     color:var(--dim);font-weight:650}
   .name{font-weight:600}
   .meta{color:var(--dim);font-size:12.5px}
-  pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;
-      overflow-x:auto;font-size:12.5px;margin:10px 0 0;white-space:pre-wrap}
   .spacer{flex:1}
+  pre{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:10px 12px;
+      overflow-x:auto;font-size:12.5px;margin:10px 0 0;white-space:pre-wrap;line-height:1.5}
+  .checks{margin:10px 0 0}
+  .chk{display:flex;gap:9px;align-items:baseline;padding:3px 0;font-size:13.5px}
+  .chk .m{width:74px;flex:none;font-weight:650;font-size:11.5px}
+  .chk .why{color:var(--dim);font-size:12.5px}
+  .attest{margin:2px 0 0 83px;color:var(--dim);font-size:12.5px}
+  .attest div{padding:1px 0}
+  .verdict{font-weight:650;font-size:13px;margin-top:8px}
 </style>
 <div class="wrap">
   <h1>Falcon lab</h1>
-  <div class="sub">Scenario runner. Reverting rolls a guest back to a clean baseline in seconds.</div>
+  <div class="sub">Reverting rolls a guest back to a clean baseline in seconds. Grading reports
+    what is actually true &mdash; a check that could not run is never a pass.</div>
   <div id="hosts"></div>
-  <h2>Scenarios</h2>
   <div id="scen"></div>
 </div>
 <script>
 const $ = s => document.querySelector(s);
-const esc = s => (s??'').toString().replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+const esc = s => (s??'').toString().replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
 function sensorClass(v){
   if(!v) return 'dim';
@@ -116,79 +141,106 @@ function sensorClass(v){
   if(v.includes('NOT installed')) return 'dim';
   return 'warn';
 }
+const MARK = {true:['ok','ok'], false:['FAIL','bad'], null:['--','dim']};
 
 async function loadHosts(){
   const r = await (await fetch('/api/status')).json();
-  $('#hosts').innerHTML = r.map(h => `
+  $('#hosts').innerHTML = '<h2>Hosts</h2>' + r.map(h => `
     <div class="card"><div class="row">
       <span class="name">${esc(h.host)}</span>
       <span class="mono dim">${esc(h.ip)}</span>
       <span class="pill ${h.reachable?'ok':'dim'}">${h.reachable?'up':esc(h.vm)}</span>
       ${h.sensor?`<span class="${sensorClass(h.sensor.verdict)}">${esc(h.sensor.verdict)}</span>`:''}
       <span class="spacer"></span>
-      ${h.snapshots.length?h.snapshots.map(s=>
-        `<button onclick="revert('${h.host}','${s}',this)">revert ${esc(s)}</button>`).join(''):''}
+      ${(h.baselines||[]).map(b=>
+        `<button onclick="revert('${h.host}','${b}',this)">revert to ${esc(b)}</button>`).join('')}
     </div></div>`).join('');
 }
 
-async function revert(host, snap, btn){
-  const base = snap.includes('Sensor')&&!snap.includes('pre') ? 'sensor' : 'bare';
-  btn.disabled = true; btn.textContent = 'reverting...';
-  await fetch(`/api/revert/${host}/${base}`, {method:'POST'});
-  await loadHosts();
+async function revert(host, baseline, btn){
+  btn.disabled=true; const t=btn.textContent; btn.textContent='reverting...';
+  const r = await (await fetch(`/api/revert/${host}/${baseline}`,{method:'POST'})).json();
+  btn.disabled=false; btn.textContent=t;
+  if(r.error) alert(r.error);
+  loadHosts();
 }
 
 async function loadScen(){
   const r = await (await fetch('/api/scenarios')).json();
-  $('#scen').innerHTML = r.map(s => `
+  let html = '', dom = null;
+  for(const s of r){
+    if(s.domain !== dom){ dom = s.domain; html += `<h2>${s.domain}. ${esc(s.domain_name)}</h2>`; }
+    const req = (s.requires||[]).length ? `<span class="meta">needs ${esc((s.requires||[]).join(', '))}</span>` : '';
+    html += `
     <div class="card">
       <div class="row">
         <span class="name">${esc(s.name)}</span>
-        <span class="pill ${s.mode==='manual'?'warn':'dim'}">${esc(s.mode)}</span>
-        <span class="meta">${esc(s.target)} &middot; baseline ${esc(s.baseline)}</span>
+        <span class="pill ${s.mode==='auto'?'':'warn'}">${esc(s.mode)}</span>
+        <span class="pill">${esc(s.target)}</span>
+        ${s.objective?`<span class="meta">${esc(s.objective)}</span>`:''}
         <span class="spacer"></span>
         <button class="primary" onclick="run('${s.id}',this)">
-          ${s.mode==='manual'?'set up':'run'}</button>
+          ${s.mode==='auto'?'run':'set up'}</button>
         <button onclick="grade('${s.id}',this)">grade</button>
       </div>
-      <div class="meta" style="margin-top:6px">${esc(s.summary||'')}</div>
-      <pre id="out-${s.id}" style="display:none"></pre>
-    </div>`).join('');
+      <div class="meta" style="margin-top:5px">${esc(s.summary||'')}</div>
+      <div class="row" style="margin-top:5px">
+        <span class="meta mono">${esc((s.kinds||[]).join(' + ')) || 'no checks'}</span>
+        ${s.duration_min?`<span class="meta">~${s.duration_min} min</span>`:''}
+        ${req}
+      </div>
+      <div id="out-${s.id}"></div>
+    </div>`;
+  }
+  $('#scen').innerHTML = html;
 }
 
-function show(id, text){
-  const el = $('#out-'+id); el.style.display='block'; el.textContent = text;
-}
+function box(id, inner){ $('#out-'+id).innerHTML = inner; }
 
 async function run(id, btn){
   btn.disabled=true; const t=btn.textContent; btn.textContent='working...';
-  const r = await (await fetch(`/api/run/${id}`, {method:'POST'})).json();
+  const r = await (await fetch(`/api/run/${id}`,{method:'POST'})).json();
   btn.disabled=false; btn.textContent=t;
-  if(r.error){ show(id, 'error: '+r.error); return; }
+  if(r.error){ box(id, `<pre class="bad">${esc(r.error)}</pre>`); return; }
   let out = '';
-  if(r.prepared) out += `baseline -> ${r.prepared.snapshot} (${r.prepared.ready?'ready':'NOT READY'})\\n\\n`;
-  if(r.mode==='manual'){ out += r.instructions || ''; }
-  else {
-    out += (r.steps||[]).map(s=>`[${s.n}] ${s.name}  ${s.ok===true?'ok':s.ok===false?'FAIL':'--'}`+
-      (s.out?`\\n     ${s.out.split('\\n').slice(0,4).join('\\n     ')}`:'')).join('\\n');
-    if(r.expect && r.expect.console) out += `\\n\\nLook in Falcon: ${r.expect.console.trim()}`;
-  }
-  show(id, out);
+  if(r.prepared) out += `baseline -> ${r.prepared.snapshot} (${r.prepared.ready?'ready':'NOT READY'})\n\n`;
+  else if(r.target === 'console') out += 'console scenario: nothing to revert\n\n';
+  (r.steps||[]).forEach(s=>{
+    out += `[${s.n}] ${s.name}  ${s.ok===true?'ok':s.ok===false?'FAIL':'--'}\n`;
+    if(s.out) out += '     ' + s.out.split('\n').slice(0,4).join('\n     ') + '\n';
+  });
+  if(r.instructions) out += (out?'\n':'') + r.instructions;
+  if(r.expect && r.expect.console) out += `\n\nLook in Falcon: ${r.expect.console.trim()}`;
+  box(id, `<pre>${esc(out)}</pre>`);
   loadHosts();
 }
 
 async function grade(id, btn){
   btn.disabled=true; btn.textContent='checking...';
-  const r = await (await fetch(`/api/grade/${id}`, {method:'POST'})).json();
+  const r = await (await fetch(`/api/grade/${id}`,{method:'POST'})).json();
   btn.disabled=false; btn.textContent='grade';
-  if(r.error){ show(id,'error: '+r.error); return; }
-  const verdict = r.passed===true?'PASS':r.passed===false?'NOT YET':'--';
-  show(id, `${verdict}  ${r.verdict||''}` + (r.hint?`\\n\\n${r.hint}`:''));
+  if(r.error){ box(id, `<pre class="bad">${esc(r.error)}</pre>`); return; }
+  const label = r.passed===true ? ['PASS','ok'] : r.passed===false ? ['NOT YET','bad']
+                                                                  : ['UNVERIFIED','dim'];
+  let h = `<div class="checks">`;
+  for(const c of (r.checks||[])){
+    const [m, cls] = MARK[String(c.ok)] || MARK['null'];
+    h += `<div class="chk"><span class="m ${cls}">${m}</span>
+            <span>${esc(c.label)}</span>
+            <span class="why">${esc(c.reason||'')}</span></div>`;
+    if((c.items||[]).length){
+      h += `<div class="attest">` +
+           c.items.map(i=>`<div>&#9744; ${esc(i)}</div>`).join('') + `</div>`;
+    }
+  }
+  h += `<div class="verdict ${label[1]}">${label[0]}</div></div>`;
+  if(r.passed !== true && r.hint) h += `<pre class="dim">${esc(r.hint.trim())}</pre>`;
+  box(id, h);
   loadHosts();
 }
 
 loadHosts(); loadScen();
-setInterval(loadHosts, 20000);
+setInterval(loadHosts, 30000);
 </script>
 """
 
