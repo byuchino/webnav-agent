@@ -158,11 +158,10 @@ async function loadHosts(){
 }
 
 async function revert(host, baseline, btn){
-  btn.disabled=true; const t=btn.textContent; btn.textContent='reverting...';
-  const r = await (await fetch(`/api/revert/${host}/${baseline}`,{method:'POST'})).json();
-  btn.disabled=false; btn.textContent=t;
+  if(!confirm(`Revert ${host} to the "${baseline}" baseline? Current state is discarded.`)) return;
+  btn.disabled=true;
+  const r = await call(`/api/revert/${host}/${baseline}`, btn, 'reverting', 900);
   if(r.error) alert(r.error);
-  loadHosts();
 }
 
 async function loadScen(){
@@ -172,7 +171,7 @@ async function loadScen(){
     if(s.domain !== dom){ dom = s.domain; html += `<h2>${s.domain}. ${esc(s.domain_name)}</h2>`; }
     const req = (s.requires||[]).length ? `<span class="meta">needs ${esc((s.requires||[]).join(', '))}</span>` : '';
     html += `
-    <div class="card">
+    <div class="card" data-target="${esc(s.target)}" data-baseline="${esc(s.baseline||'none')}">
       <div class="row">
         <span class="name">${esc(s.name)}</span>
         <span class="mono dim">${esc(s.id)}</span>
@@ -198,10 +197,42 @@ async function loadScen(){
 
 function box(id, inner){ $('#out-'+id).innerHTML = inner; }
 
+// Long operations need a floor under them: a revert plus a Windows boot is minutes, and a
+// frozen button is indistinguishable from a crash.
+async function call(url, btn, label, secs){
+  const t = btn.textContent;
+  const started = Date.now();
+  const tick = setInterval(()=>{
+    btn.textContent = `${label} ${Math.round((Date.now()-started)/1000)}s`;
+  }, 1000);
+  const ac = new AbortController();
+  const killer = setTimeout(()=>ac.abort(), (secs||900)*1000);
+  const poll = setInterval(loadHosts, 8000);   // watch the guest go down and come back
+  try{
+    const res = await fetch(url, {method:'POST', signal: ac.signal});
+    const txt = await res.text();
+    try { return JSON.parse(txt); }
+    catch(e){ return {error:`server returned non-JSON (${res.status}): ${txt.slice(0,200)}`}; }
+  } catch(e){
+    return {error: e.name==='AbortError'
+      ? `gave up after ${secs||900}s. The work may still be running — check the host card, `
+        +`or run it from the CLI where you can watch it.`
+      : `request failed: ${e.message}`};
+  } finally {
+    clearInterval(tick); clearTimeout(killer); clearInterval(poll);
+    btn.disabled=false; btn.textContent=t; loadHosts();
+  }
+}
+
 async function run(id, btn){
-  btn.disabled=true; const t=btn.textContent; btn.textContent='working...';
-  const r = await (await fetch(`/api/run/${id}`,{method:'POST'})).json();
-  btn.disabled=false; btn.textContent=t;
+  const card = btn.closest('.card');
+  const destructive = card && card.dataset.baseline && card.dataset.baseline !== 'none';
+  if(destructive && !confirm(
+      `This reverts ${card.dataset.target} to the "${card.dataset.baseline}" baseline first.\n\n`
+      + `Anything currently on that guest is discarded — including an installed sensor if the `
+      + `baseline is "bare". Continue?`)) return;
+  btn.disabled=true;
+  const r = await call(`/api/run/${id}`, btn, 'working', 900);
   if(r.error){ box(id, `<pre class="bad">${esc(r.error)}</pre>`); return; }
   let out = '';
   if(r.prepared) out += `baseline -> ${r.prepared.snapshot} (${r.prepared.ready?'ready':'NOT READY'})\n\n`;
@@ -217,9 +248,8 @@ async function run(id, btn){
 }
 
 async function grade(id, btn){
-  btn.disabled=true; btn.textContent='checking...';
-  const r = await (await fetch(`/api/grade/${id}`,{method:'POST'})).json();
-  btn.disabled=false; btn.textContent='grade';
+  btn.disabled=true;
+  const r = await call(`/api/grade/${id}`, btn, 'checking', 300);
   if(r.error){ box(id, `<pre class="bad">${esc(r.error)}</pre>`); return; }
   const label = r.passed===true ? ['PASS','ok'] : r.passed===false ? ['NOT YET','bad']
                                                                   : ['UNVERIFIED','dim'];
