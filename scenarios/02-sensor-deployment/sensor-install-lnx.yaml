@@ -45,6 +45,13 @@ instructions: |
      and it collects almost nothing. A host in RFM looks healthy in every naive check --
      which is exactly why the grader treats RFM as a failure rather than a pass.
 
+  Worth knowing before you run this more than once: reverting to the bare baseline and
+  reinstalling mints a NEW agent ID. The CID has no way to know it is the same machine, so
+  each run leaves another host record behind, and the old ones go stale rather than
+  disappearing. That is not a lab artefact — it is what happens in production when a machine
+  is reimaged, and it is why objectives 3.2, 3.6 and 3.7 (hidden hosts, inactive sensors,
+  retention) exist. Hide the stale duplicates from Host management when they accumulate.
+
 expect:
   console: Host management -- falcon-lab-lnx appears, with its kernel version listed
   detection: none

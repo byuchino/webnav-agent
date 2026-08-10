@@ -1,0 +1,80 @@
+id: sensor-update-pinning
+name: Sensor update policy — pin a version and stop the drift
+target: console
+mode: manual
+domain: 5
+difficulty: 2
+duration_min: 20
+objective: "5.2 — determine appropriate sensor update policy settings to control the update process"
+requires: [lab-host-group]
+
+summary: >
+  Control which sensor version your hosts run instead of letting them drift to the latest.
+  This exercise exists because the lab hit the problem for real: both guests were deliberately
+  installed at N-2 and the Windows host had upgraded itself to N within a day.
+
+teaches: |
+  - That sensor version is governed by POLICY, not by whatever installer you happened to use
+  - What N, N-1 and N-2 mean as policy settings, and that they are a moving target by design
+  - The difference between tracking N-2 and pinning an explicit version, and when each is right
+  - That an uncontrolled update policy will silently undo a deliberate version choice
+  - Where to see which version a host is actually on, versus which one policy intends
+
+instructions: |
+  Background, because it is what motivated this exercise. The lab guests were installed from
+  N-2 installers on purpose. Within a day:
+
+      installed on Windows:  7.38.21003   (N-2)
+      actually running:      7.40.21306   (N)
+
+  Nobody upgraded it by hand. A sensor update policy did, because the policy that applied to
+  those hosts tracks the latest version.
+
+  1. Endpoint security (or Host setup and management) > Sensor update policies. Find the
+     policies that exist — this tenant already has several, including custom ones. Work out
+     which one currently applies to the lab hosts, and what version setting it carries.
+
+  2. Create a sensor update policy for the **Falcon Lab** group that does NOT track the
+     latest. Either select N-2, or pin an explicit version. Note the difference while you are
+     there: "N-2" follows releases and will move when a new version ships, whereas an explicit
+     pin stays put until you change it. For a lab that needs a stable gap to demonstrate
+     updates, the explicit pin is the better choice; for production fleets, N-1 or N-2 is the
+     usual answer.
+
+  3. Give it precedence over whatever was upgrading these hosts, and confirm on each host's
+     detail panel which update policy it is now receiving.
+
+  4. Check your work:
+         lab grade sensor-update-pinning
+
+  Then note the honest limitation: the host is already on 7.40, and a policy will not
+  downgrade it just because you asked. Getting back to N-2 means uninstalling and reinstalling
+  from the older package — which is objective 2.3, and a reason to build the lab baseline
+  AFTER the update policy is in place rather than before. That ordering mistake is exactly
+  what this lab made.
+
+expect:
+  console: |
+    Sensor update policies — a policy scoped to Falcon Lab with a non-latest version setting,
+    and each host's detail panel showing that policy applied.
+  detection: none
+
+verify:
+  - kind: console
+    label: a sensor update policy references the lab group
+    path: /policies/sensor-update
+    api_match: /api2/
+    expect_contains: "Falcon Lab"
+  - kind: attest
+    label: understanding
+    items:
+      - "I found which policy had been upgrading the lab hosts"
+      - "My Falcon Lab policy specifies a non-latest version"
+      - "I can explain the difference between tracking N-2 and pinning a version"
+      - "I know why the host did not downgrade when I changed the policy"
+
+hint: >
+  If the console check cannot find "Falcon Lab" on the sensor update policies page, the policy
+  may exist but not be assigned to that group — assignment is a separate step from creation,
+  and it is the step people forget. Confirm on the host detail panel which update policy each
+  guest is actually receiving.

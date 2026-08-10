@@ -41,6 +41,13 @@ instructions: |
      talk to. That is the single most common real-world deployment mistake.
    - Watch Host management in the console and see how long the host takes to appear.
 
+  Worth knowing before you run this more than once: reverting to the bare baseline and
+  reinstalling mints a NEW agent ID. The CID has no way to know it is the same machine, so
+  each run leaves another host record behind, and the old ones go stale rather than
+  disappearing. That is not a lab artefact — it is what happens in production when a machine
+  is reimaged, and it is why objectives 3.2, 3.6 and 3.7 (hidden hosts, inactive sensors,
+  retention) exist. Hide the stale duplicates from Host management when they accumulate.
+
 expect:
   console: Host setup and management > Host management -- falcon-lab-win should appear
   detection: none -- installing a sensor is not a detection
