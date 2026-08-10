@@ -175,6 +175,7 @@ async function loadScen(){
     <div class="card">
       <div class="row">
         <span class="name">${esc(s.name)}</span>
+        <span class="mono dim">${esc(s.id)}</span>
         <span class="pill ${s.mode==='auto'?'':'warn'}">${esc(s.mode)}</span>
         <span class="pill">${esc(s.target)}</span>
         ${s.objective?`<span class="meta">${esc(s.objective)}</span>`:''}
