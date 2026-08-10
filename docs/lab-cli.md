@@ -57,8 +57,16 @@ induced here the way Linux was, and the investigation is worth recording so it i
 The short version: on both platforms RFM is a **kernel-driver-load-time** state, which is why
 Linux needed a kernel/module mismatch to reach it and why stopping a user-space dependency on
 Windows does not. There is also no local Windows RFM read — unlike `falconctl -g --rfm-state`,
-`CSSensorSettings.exe` exposes only proxy/tags/rtr, so Windows RFM is confirmed from the console
-(Host Management's RFM column) or the ZTA signal.
+`CSSensorSettings.exe` exposes only proxy/tags/rtr.
+
+**RFM detection is server-side and platform-agnostic.** Confirmed against CrowdStrike's own SDK
+(`~/falconpy`, `samples/hosts/rfm_report.py`): every device record carries a
+`reduced_functionality_mode` field (value `yes` / `no` / `unknown`), and it is an FQL filter key
+on `QueryDevicesByFilter`. The console's RFM column and its RFM filter are exactly
+`reduced_functionality_mode:'yes'` — the same field for Windows, Linux and macOS. So Windows RFM
+is *detected* the same way Linux is (from what the sensor reports to the cloud); what differs is
+only that Linux additionally lets you read the state on the box. The `induce-rfm` exercise sends
+you to Host Management's RFM filter, which is that FQL query.
 
 The runner reverts to the declared baseline before doing anything, so an exercise cannot
 silently begin from the wrong state — a sensor-install lesson that started on a host which
