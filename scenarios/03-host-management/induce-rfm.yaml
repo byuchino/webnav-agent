@@ -97,7 +97,13 @@ instructions: |
      permission gate on YOUR account — a missing Responder role — unrelated to the host's RFM.)
 
   3. RECONNOITRE OVER RTR. In the RTR session, run a few read-only commands — `ps` to see
-     `falcon-sensor` running, `ls` and `cat` around `/opt/CrowdStrike` and the sensor logs.
+     `falcon-sensor` running, `ls /opt/CrowdStrike` for the sensor's files, and `cat` the sensor
+     logs. On Linux those logs live in **/var/log**, not under /opt/CrowdStrike:
+     `falcon-sensor.log`, `falcond.log`, `falconctl.log`, and `falcon-libbpf.log` (the eBPF
+     backend). `cat` is a read-only command, so any Responder role can read them. The live
+     runtime message stream is also in the systemd journal (`journalctl -u falcon-sensor`) — but
+     reading that means running a binary, i.e. the `run` command, which needs Administrator plus
+     a policy that permits run.
      Reading the RFM reason and history the way the setup step did means running the falconctl
      binary, i.e. the RTR **`run`** command — and `run` needs the **RTR Administrator** role AND
      a response policy with `run` enabled (the default policy has it OFF). Notice that gate:
