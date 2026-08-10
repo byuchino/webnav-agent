@@ -53,11 +53,16 @@ instructions: |
      above the table and enable **RFM**. Confirm falcon-lab-lnx appears.
 
      Now click the **host name** to open its **summary panel** (it slides in from the right).
-     Note what makes RFM dangerous: at the top of the panel the host shows **Online (blue)** —
-     "seen recently" — and in the list its **Last seen** is current. Every naive "is it up?"
-     check passes. The panel tells you the host IS in RFM (status), but it does **not** tell you
-     *why* — the console surfaces the status, not the reason. That gap between "looks fine" and
-     "is fine", and the fact that the reason lives on the host, is exactly why step 2 exists.
+     The console flags the condition prominently — a warning banner reads:
+
+         Warning: Host is in RFM (Reduced Functionality Mode)
+
+     Expand the **Host Info** section (it is collapsed by default) to see the host's status
+     details: its **Last seen** is current and it was seen recently. That is what makes RFM
+     dangerous — every naive "is it up?" check passes. But notice what the banner and Host Info
+     give you: the fact that the host IS in RFM (status). They do **not** tell you *why* — the
+     console surfaces the status, not the reason. That gap between "looks fine" and "is fine",
+     and the fact that the reason lives on the host, is exactly why step 2 exists.
 
   2. REACH IT WITH RTR, not SSH. From the host's detail page choose **Connect to host** (the
      same action appears on a detection's Event Actions menu). Before it connects, know what has
@@ -125,7 +130,7 @@ verify:
     label: what you did in the console
     items:
       - "I found the host using the RFM filter in Host management (RFM column turned on)"
-      - "The summary panel showed it Online (blue) with a recent Last seen"
+      - "The summary panel showed a 'Host is in RFM' warning banner, and a recent Last seen in Host Info"
       - "I got the RFM reason from the host itself (falconctl via RTR) — the console shows status, not reason"
       - "I tried to Connect to host with RTR and can say whether it connected on an RFM host"
       - "I can name RTR's three gates: online, a response policy with RTR enabled, and an RTR role"
