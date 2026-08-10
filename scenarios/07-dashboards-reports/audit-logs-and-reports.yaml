@@ -1,0 +1,69 @@
+id: audit-logs-and-reports
+name: Audit logs — proving who changed what
+target: console
+mode: manual
+domain: 7
+difficulty: 1
+duration_min: 15
+objective: "7.1, 7.2 — sensor report types and their use cases; audit log types and their use cases"
+requires: [prevention-detect-vs-block]
+
+summary: >
+  You have spent the last few exercises changing policy, creating groups and adding
+  indicators. Now go and find the record of yourself doing it. Audit logs are the answer to
+  "who changed this and when", and the exam wants you to know there are several kinds.
+
+teaches: |
+  - That there is more than one audit log, each covering a different kind of activity
+  - Which log answers which question: a policy edit, an RTR session, an API call, a login
+  - What sensor reports exist and what each is actually for
+  - That your own recent changes are the easiest possible test data
+
+instructions: |
+  This exercise works best immediately after the policy and IOC exercises, because you are
+  looking for your own footprints.
+
+  1. Find the audit logs in the console. There is more than one — look for the distinction
+     between administrative changes, Real Time Response activity, and API access.
+
+  2. Answer each of these by locating the entry, not by reasoning about it:
+       a. When was the Falcon Lab host group created, and by whom?
+       b. When was the prevention policy last modified?
+       c. Which log would show a Real Time Response session, including the commands run?
+       d. Which log would show an API client authenticating?
+
+  3. Now the reports. Find the sensor reports available to you and note what each is for.
+     At minimum work out which report answers:
+       - which hosts are running which sensor version
+       - which hosts have not reported recently
+
+  4. Check your work:
+         lab grade audit-logs-and-reports
+
+  Objective 5.3 also lives here: RTR activity is auditable, and being able to say where that
+  audit trail is — and that it captures the commands themselves — is the point of the
+  question rather than the mechanics of running a session.
+
+expect:
+  console: The audit log views, filtered to the last day, showing your own changes
+  detection: none
+
+verify:
+  - kind: console
+    label: audit log page returns data
+    path: /audit-logs
+    api_match: /api/
+  - kind: attest
+    label: locating the records
+    items:
+      - "I found the audit entry for creating the Falcon Lab group"
+      - "I found the audit entry for my prevention policy change"
+      - "I can name which log covers RTR sessions and which covers API access"
+      - "I can name the report that lists sensor versions across hosts"
+
+hint: >
+  If the console check reports no matching API response, the audit log page may live at a
+  different path in your tenant — adjust `path` in the scenario file. This check is
+  deliberately shallow: it confirms the page returned data, and the substantive work is
+  attested, because "did you find the right entry" is not something a substring match can
+  honestly judge.

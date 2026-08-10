@@ -1,0 +1,72 @@
+id: rfm-and-inactive-hosts
+name: Find hosts in RFM, and locate inactive sensors
+target: console
+mode: manual
+domain: 3
+difficulty: 2
+duration_min: 20
+objective: "3.1, 3.4, 3.5, 3.6, 3.7 — filtering, RFM impact and causes, inactive sensors, retention"
+
+summary: >
+  Reduced Functionality Mode is the most useful concept in this domain, because a host in RFM
+  looks healthy in every naive check. Learn to find those hosts deliberately, and to find the
+  ones that stopped reporting entirely.
+
+teaches: |
+  - What RFM is: a sensor running without a matching kernel module. It installs, it runs, it
+    registers, and it collects almost nothing
+  - Why that matters more than it sounds: every simple health check passes
+  - What causes it — most often a kernel the installed sensor version does not support
+  - How to filter Host Management to surface RFM hosts and inactive sensors
+  - How long an inactive sensor is retained before it disappears
+
+instructions: |
+  Console work, with one thing to verify on the Linux guest.
+
+  1. Host setup and management > Host management. Work out how to filter this page. Find:
+       a. hosts in Reduced Functionality Mode
+       b. hosts that have been inactive for some period
+       c. hosts running a sensor version older than the current one
+          (falcon-lab-win and falcon-lab-lnx are both on N-2, so they should appear)
+
+  2. Find the retention answer in the console or the documentation rather than guessing:
+     how long is an inactive sensor kept before it is removed? Note where you found it —
+     the exam asks for the number, and knowing where it is stated is more durable than
+     memorising it.
+
+  3. Confirm your own lab hosts are NOT in RFM, from the host itself:
+         ssh -i ~/.ssh/falcon_lab_ed25519 labadmin@10.77.0.11 \
+           'sudo /opt/CrowdStrike/falconctl -g --rfm-state'
+
+     Note the output format. It prints with a trailing period — `rfm-state=false.` — which
+     is exactly the sort of detail that breaks a naive string comparison. This lab's own
+     grader had that bug and reported a healthy sensor as being in RFM.
+
+  4. Check your work:
+         lab grade rfm-and-inactive-hosts
+
+expect:
+  console: Host management, with filters applied for RFM / inactive / sensor version
+  detection: none
+
+verify:
+  - kind: sensor
+    label: linux sensor not in RFM
+    target: lnx
+  - kind: console
+    label: host management shows the lab hosts
+    path: /host-management
+    api_match: /api/
+    expect_contains: "falcon-lab"
+  - kind: attest
+    label: filtering and retention
+    items:
+      - "I filtered Host management to show hosts in RFM"
+      - "I filtered for inactive sensors"
+      - "I found the inactive-sensor retention period and can say where it is documented"
+
+hint: >
+  The sensor check reads RFM state directly from the host, so it is authoritative regardless
+  of what the console shows. If the console check cannot find "falcon-lab", either the page
+  did not return host data (session expired?) or your hosts are not visible to the account
+  you signed in with.

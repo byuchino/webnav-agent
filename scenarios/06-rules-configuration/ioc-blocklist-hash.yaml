@@ -1,0 +1,86 @@
+id: ioc-blocklist-hash
+name: Block a file by hash with a custom IOC
+target: win
+baseline: sensor
+mode: guided
+domain: 6
+difficulty: 2
+duration_min: 25
+objective: "6.2, 6.3 — allow trusted activity and resolve false positives; IOC settings for posture"
+requires: [lab-host-group]
+
+summary: >
+  Create a harmless file, block it by its SHA256, and watch the block take effect. Then invert
+  it: allowlist the same hash and watch it stop. Custom IOCs are how you express "this exact
+  thing, always" in both directions, and the exam cares about both.
+
+teaches: |
+  - That an IOC is an exact-match rule on a hash, and how that differs from a behavioural IOA
+  - That the same mechanism serves blocking AND allowlisting — the second is how most real
+    false positives get resolved
+  - That IOC actions have severity and can be scoped to host groups
+  - Why hash-based blocking is brittle: one recompile and the indicator is worthless
+
+setup:
+  - name: create a benign file and report its SHA256
+    shell: |
+      New-Item -ItemType Directory -Force -Path C:\lab | Out-Null
+      $stamp = (Get-Date -Format 'yyyyMMddHHmmss')
+      Set-Content -Path C:\lab\labmarker.txt -Value "falcon lab marker $stamp" -Encoding ascii
+      $h = (Get-FileHash C:\lab\labmarker.txt -Algorithm SHA256).Hash.ToLower()
+      Write-Output "SHA256=$h"
+    expect_contains: "SHA256="
+
+instructions: |
+  The setup step above created C:\lab\labmarker.txt and printed its SHA256. Copy that hash —
+  it is unique to this run, so it cannot collide with anything real.
+
+  1. Endpoint security > IOC management (custom indicators). Add a SHA256 indicator using
+     that hash, with an action that blocks and detects, scoped to the **Falcon Lab** group.
+     Give it a description you will recognise later.
+
+  2. Wait for it to reach the host, then try to execute or copy the file and see what the
+     sensor does. Check Endpoint detections for a matching event.
+
+  3. Now invert it. Change the action on that same indicator to allow, or add an allowlist
+     entry. This is the real-world path for a false positive: something legitimate is being
+     caught, and you express an exception for exactly that artifact rather than weakening
+     the whole policy.
+
+  4. Think about the limitation before you finish. Change one byte of the file and rehash it:
+
+         Add-Content C:\lab\labmarker.txt 'x'
+         (Get-FileHash C:\lab\labmarker.txt -Algorithm SHA256).Hash
+
+     A different hash, so the indicator no longer applies. That is why hash IOCs handle known
+     artifacts and behavioural rules handle everything else.
+
+  5. Check your work:
+         lab grade ioc-blocklist-hash
+
+expect:
+  console: IOC management — your custom SHA256 indicator, scoped to Falcon Lab
+  detection: A custom-IOC detection naming your indicator, on falcon-lab-win
+
+verify:
+  - kind: console
+    label: a custom IOC exists
+    path: /ioc-management
+    api_match: /api/
+  - kind: endpoint
+    label: the marker file exists to be matched
+    shell: |
+      if (Test-Path C:\lab\labmarker.txt) { 'present' } else { 'missing' }
+    expect_contains: present
+  - kind: attest
+    label: understanding
+    items:
+      - "My indicator blocked the file, and I saw the detection"
+      - "I then allowlisted the same hash and the block stopped"
+      - "I can explain why a one-byte change defeats a hash IOC"
+
+hint: >
+  The console check confirms the IOC page returned data; it cannot tell whose indicator is
+  whose without knowing your description, so the substantive claims are attested. If the
+  endpoint check says the marker file is missing, prevention may have quarantined it — which
+  is a pass in spirit, and worth noting as the exercise working rather than failing.

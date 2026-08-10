@@ -1,0 +1,66 @@
+id: roles-least-privilege
+name: Roles, permissions and least privilege
+target: console
+mode: manual
+domain: 1
+difficulty: 2
+duration_min: 20
+objective: "1.1, 1.2 — determine roles required for features; create roles and assign users"
+
+summary: >
+  Work out which role a task actually requires, rather than reaching for Falcon Administrator.
+  The exam asks this repeatedly, and the answer is rarely "the admin role".
+
+teaches: |
+  - That visibility and authority are separate: several roles can SEE host management and
+    cannot manage host groups
+  - How to reason from a task to the minimum role that permits it
+  - Where role assignments live, and that a user can hold several
+  - Why "give them Falcon Administrator" is the wrong instinct in an exam and at work
+
+instructions: |
+  Nothing is changed on an endpoint here; this is entirely console work.
+
+  1. Go to Users and roles. Look at the roles that exist and read their descriptions.
+
+  2. Answer these from the console, not from memory. For each, name the LEAST privileged
+     role that permits it:
+       a. View the host management page but change nothing
+       b. Create and assign host groups
+       c. Modify a prevention policy
+       d. Run a Real Time Response session on a host
+       e. Hide or delete a host from the console
+
+  3. Create a role assignment that grants (a) but NOT (b) — a read-only view of host
+     management. Assign it to a test user, or to yourself as a second role if you have no
+     spare account.
+
+  4. Check your work:
+         lab grade roles-least-privilege
+
+  Worth noticing: the documentation is explicit that Falcon Administrator and Endpoint
+  Manager can manage host groups, while Prevention Policy Manager, Falcon Analyst and Help
+  Desk Analyst can see host management but cannot. That split — able to look, not able to
+  touch — is the shape most of these questions take.
+
+expect:
+  console: Users and roles — the role list, and the assignments on a user
+  detection: none — this is administrative work
+
+verify:
+  - kind: console
+    label: users and roles page reachable
+    path: /users-and-roles
+    api_match: /api/
+  - kind: attest
+    label: role reasoning
+    items:
+      - "I named the least-privileged role for each of the five tasks"
+      - "I created a read-only host-management assignment and it does NOT permit group changes"
+      - "I can explain why Falcon Administrator would be the wrong answer to (a)"
+
+hint: >
+  The console check only confirms the page loaded and returned data — it cannot judge whether
+  your role reasoning was right, and it does not pretend to. The attest items are yours to
+  answer honestly. If the console check itself failed, the session has probably expired: sign
+  in again in the browser the lab watches.

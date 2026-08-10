@@ -1,0 +1,98 @@
+id: prevention-detect-vs-block
+name: Prevention policy — the gap between detecting and blocking
+target: win
+baseline: sensor
+mode: guided
+domain: 5
+difficulty: 2
+duration_min: 25
+objective: "5.1 — determine appropriate prevention policy settings and explain the effect on posture"
+requires: [lab-host-group, eicar-win]
+
+summary: >
+  Change one prevention setting and watch the endpoint's behaviour change with it. This is the
+  exercise that makes "detection" versus "prevention" concrete instead of a definition, and it
+  is the clearest demonstration of why a console check alone is not enough.
+
+teaches: |
+  - That a detection and a prevention are the same event with a different policy decision
+  - That policy applies through a GROUP, so the group assignment is part of the setting
+  - That a saved policy is not an applied policy: propagation takes time, and precedence can
+    mean the setting you edited is not the one the host receives
+  - Why proving a change requires the endpoint, not just the console
+
+setup:
+  - name: revert to a clean sensor baseline and confirm the sensor is healthy
+    shell: |
+      $s = Get-Service CSFalconService -ErrorAction SilentlyContinue
+      if (-not $s -or $s.Status -ne 'Running') { Write-Output 'SENSOR NOT RUNNING'; exit 1 }
+      Remove-Item C:\lab\eicar.com -ErrorAction SilentlyContinue
+      Write-Output 'ready'
+    expect_contains: ready
+
+instructions: |
+  The Windows host is back at a clean sensor baseline with no EICAR file present.
+
+  1. Endpoint security > Prevention policies. Find the policy that applies to the
+     **Falcon Lab** group. If the group has no dedicated policy, clone the default one and
+     assign the clone to Falcon Lab — never edit the default while learning.
+
+  2. Note its current state. Somewhere in that policy there are settings that decide whether
+     a known-malicious file is merely detected or actively blocked. Read them; do not change
+     anything yet.
+
+  3. **First, with prevention OFF for that setting**, drop the EICAR file:
+
+         ./lab.py run eicar-win --no-revert
+
+     Confirm in Endpoint detections that a detection appeared, and confirm on disk that the
+     file survived. Detected, not blocked.
+
+  4. **Now turn the relevant prevention ON** for the Falcon Lab policy and save. Wait for the
+     host to receive it — the host's detail panel shows when a policy was applied, and
+     "Changes pending" means it has not landed yet. This wait is the lesson: the console
+     showing a setting does not mean the endpoint has it.
+
+  5. Repeat step 3. The file should now be quarantined rather than left in place.
+
+  6. Check your work:
+         lab grade prevention-detect-vs-block
+
+  If step 5 behaves exactly like step 3, do not assume the exercise is broken. Check, in
+  order: did the policy save; is it assigned to the Falcon Lab group; is this host in that
+  group; has the host actually received it; is another policy taking precedence. That
+  checklist IS objective 5.1.
+
+expect:
+  console: |
+    Prevention policies — the policy assigned to Falcon Lab, and its applied state on the
+    host's detail panel. Endpoint detections should show entries from both runs, with
+    different outcomes.
+  detection: >
+    Two events for the same action. The second should be a prevention rather than a bare
+    detection.
+
+verify:
+  - kind: console
+    label: a policy is assigned to the Falcon Lab group
+    path: /prevention-policies
+    api_match: /api/
+    expect_contains: "Falcon Lab"
+  - kind: endpoint
+    label: eicar file was blocked on disk
+    shell: |
+      if (Test-Path C:\lab\eicar.com) { 'STILL PRESENT' } else { 'removed' }
+    expect_contains: removed
+  - kind: attest
+    label: understanding
+    items:
+      - "I saw the same action produce a detection first and a prevention second"
+      - "I know where the host's detail panel shows when its policy was applied"
+      - "I can name at least two reasons a saved policy might not reach a host"
+
+hint: >
+  The two checks are deliberately different claims. The console check says the policy is
+  ASSIGNED; the endpoint check says the behaviour actually CHANGED. If the console passes and
+  the endpoint does not, the setting was saved but never reached the host — which is precisely
+  the failure this exercise exists to teach. Give it a couple of minutes and re-grade before
+  concluding anything.

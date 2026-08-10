@@ -1,0 +1,66 @@
+id: lab-host-group
+name: Create a host group for the lab machines
+target: console
+mode: manual
+domain: 4
+difficulty: 1
+duration_min: 15
+objective: "4.1, 4.2 — group assignment and its effect on policy application; group best practices"
+requires: [sensor-install-win]
+
+summary: >
+  Put the two lab hosts in their own group. This is a prerequisite for every policy exercise
+  that follows, and it is the mechanism by which policy reaches a host at all — a policy
+  applies to a group, never directly to a machine.
+
+teaches: |
+  - That policy is attached to GROUPS, so group membership decides what a host receives
+  - The difference between a static group (you pick the hosts) and a dynamic one (a rule
+    picks them), and when each is appropriate
+  - Why a lab or pilot group is the standard way to test a policy change safely
+  - That a host can belong to several groups, which is where precedence starts to matter
+
+instructions: |
+  1. Host setup and management > Host groups. Create a group named exactly:
+
+         Falcon Lab
+
+     Use a STATIC group and add falcon-lab-win and falcon-lab-lnx by hand.
+
+  2. Then do it the other way as a thought experiment: what dynamic rule would capture both
+     hosts and nothing else? Hostname prefix is the obvious candidate. Consider what happens
+     to a dynamic group when someone renames a host — that fragility is the trade-off against
+     never having to maintain membership by hand.
+
+  3. Look at each host's detail panel and find which prevention policy now applies to it.
+     Note that it may say "No Policy" briefly — a host that was recently installed, or whose
+     policy the cloud has not yet evaluated, shows that.
+
+  4. Check your work:
+         lab grade lab-host-group
+
+  Best practice worth internalising: groups are how you stage a change. Apply a new policy to
+  a lab group first, confirm the behaviour, then widen it. Every policy exercise in this
+  library assumes the Falcon Lab group exists for exactly that reason.
+
+expect:
+  console: Host groups — a group named "Falcon Lab" containing both lab hosts
+  detection: none
+
+verify:
+  - kind: console
+    label: Falcon Lab group exists
+    path: /host-groups
+    api_match: /api/
+    expect_contains: "Falcon Lab"
+  - kind: attest
+    label: understanding
+    items:
+      - "Both lab hosts are members of the group"
+      - "I can state which prevention policy each lab host is receiving, and why"
+      - "I can describe a dynamic rule that would capture both, and its failure mode"
+
+hint: >
+  If the console check cannot find "Falcon Lab", check the name matches exactly — the check
+  is a literal substring match on what the console's API returned. If it reports that no API
+  response matched, the session has likely expired.

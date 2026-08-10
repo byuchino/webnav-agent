@@ -69,12 +69,24 @@ def cmd_snapshot(a):
     print(f"{a.host:5} snapshot {a.name} taken ({how})")
 
 
+DOMAINS = {
+    0: "Foundations", 1: "User Management", 2: "Sensor Deployment",
+    3: "Host Management", 4: "Group Creation", 5: "Policy Application",
+    6: "Rules Configuration", 7: "Dashboards and Reports", 8: "Workflows",
+}
+
+
 def cmd_scenarios(a):
     all_ = scenarios.load_all()
-    for sid in sorted(all_):
-        s = all_[sid]
-        mode = _c("manual", WARN) if s["mode"] == "manual" else "auto"
-        print(f"{sid:22} {s['target']:4} {s['baseline']:7} {mode:8} {s['name']}")
+    last = None
+    for s in sorted(all_.values(), key=lambda x: (x.get("domain", 0), x["id"])):
+        d = s.get("domain", 0)
+        if d != last:
+            print(f"\n{_c(f'{d}. ' + DOMAINS.get(d, '?'), WARN)}")
+            last = d
+        mode = _c(f"{s['mode']:6}", WARN) if s["mode"] != "auto" else f"{s['mode']:6}"
+        kinds = ",".join(sorted({v["kind"] for v in (s.get("verify") or [])})) or "-"
+        print(f"  {s['id']:28} {s['target']:7} {mode} {kinds:22} {s['name'][:38]}")
 
 
 def cmd_show(a):
@@ -123,17 +135,17 @@ def cmd_run(a):
 
 def cmd_grade(a):
     r = scenarios.grade(a.scenario)
-    verdict = r.get("verdict", "")
-    if r["passed"] is True:
-        print(f"{r['scenario']:22} {_c('PASS', OK)}  {verdict}")
-    elif r["passed"] is False:
-        print(f"{r['scenario']:22} {_c('NOT YET', BAD)}  {verdict}")
-        if r.get("hint"):
-            print(r["hint"].rstrip())
-    else:
-        print(f"{r['scenario']:22} {_c('--', DIM)}  {verdict}")
-    if a.verbose and r.get("detail"):
-        print(json.dumps(r["detail"], indent=2))
+    label = (_c("PASS", OK) if r["passed"] is True else
+             _c("NOT YET", BAD) if r["passed"] is False else _c("UNVERIFIED", DIM))
+    print(f"{r['scenario']:28} {label}")
+    for c in r.get("checks", []):
+        mark = _mark(c["ok"])
+        print(f"  {mark:14} {c['label']:34} {c.get('reason','')[:60]}")
+        for item in c.get("items", []):
+            print(f"        {_c('[ ] ' + item, DIM)}")
+    if r["passed"] is not True and r.get("hint"):
+        print()
+        print(r["hint"].rstrip())
 
 
 def cmd_sensor(a):

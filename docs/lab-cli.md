@@ -84,31 +84,83 @@ arrives, which is the most common real deployment mistake and worth doing on pur
 
 ## Adding a scenario
 
-Drop a YAML file in `scenarios/`. No code.
+Drop a YAML file under `scenarios/<domain>/`. No code. Scenarios are organised by the eight
+CCFA exam domains, plus `00-foundations` for the pipeline smoke test.
 
 ```yaml
 id: my-scenario
 name: Human readable name
-target: win            # win | lnx
-baseline: sensor       # bare | sensor
-mode: auto             # auto = runner executes; manual = you do it
+target: win | lnx | console   # console = no guest at all
+baseline: sensor              # bare | sensor; omit for console scenarios
+mode: auto | manual | guided
+domain: 5                     # CCFA domain number
+objective: "5.1 — ..."        # the exam objective this serves
+difficulty: 2
+requires: [lab-host-group]    # advisory, reported not enforced
+
 summary: one line
 teaches: |
-  what the operator should take away
-steps:                 # auto only
+  what the operator should walk away knowing
+setup:                        # guided mode: runner does this, then hands over
+  - name: prepare
+    shell: ...
+steps:                        # auto mode: runner does all of it
   - name: do the thing
-    shell: |
-      Write-Output 'powershell on win, sh on lnx'
+    shell: ...
     expect_contains: optional
+instructions: |               # manual and guided: what YOU do
 expect:
   console: where to look in Falcon
-  detection: what should fire
-grade:
-  kind: sensor         # or omit for a shell check
-  shell: |
-    optional command; rc 0 plus expect_contains is a pass
-  hint: shown only on failure
+verify:                       # a LIST — a scenario may need several
+  - kind: console
+    label: policy is assigned
+    path: /prevention-policies
+    api_match: /api/
+    expect_contains: "Falcon Lab"
+  - kind: endpoint
+    label: behaviour actually changed
+    shell: ...
+    expect_contains: removed
+  - kind: sensor
+    label: sensor health
+  - kind: attest
+    label: understanding
+    items: ["...", "..."]
+hint: shown only when not passing
 ```
+
+### Three targets, because most of CCFA never touches an endpoint
+
+Creating roles, setting policy precedence, adding an IOC, building a workflow — none of it
+involves a guest. `target: console` scenarios have no host and no baseline to revert to.
+
+### Verification is a list
+
+`configured` and `functional` are different claims, and the gap between them is where policy
+precedence, group assignment and propagation delay actually live. A console check says the
+setting was saved; an endpoint check says the behaviour changed. The policy exercise requires
+both, and when the console passes while the endpoint fails, that combination *is* the lesson.
+
+Console checks read the API response the console itself received — not the DOM. Substring
+matching rather than a JSON path language, deliberately: the console's internal API is
+undocumented and unversioned, so its response *shape* is the least stable thing about it,
+while a group's name appearing in the payload is durable.
+
+### `None` is never a pass
+
+A check that could not run — expired console session, unreachable guest — returns `None`, and
+a scenario whose checks all returned `None` grades as **UNVERIFIED**, not passed:
+
+```
+lab-host-group               UNVERIFIED
+  --   Falcon Lab group exists    the console session has expired — sign in again
+  --   understanding              self-checked (not verified automatically)
+        [ ] Both lab hosts are members of the group
+```
+
+"I could not look" and "I looked and it was wrong" are different answers, and a grader that
+conflates them is worse than no grader. `attest` items are shown as an honest checklist and
+never counted as verification.
 
 ## The web panel
 

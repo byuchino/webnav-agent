@@ -1,0 +1,60 @@
+id: eicar-win
+name: EICAR test file on Windows
+target: win
+baseline: sensor
+mode: auto
+domain: 0
+difficulty: 1
+duration_min: 10
+objective: "foundational — proves the pipeline before anything subtle"
+
+summary: >
+  Write the EICAR test string to disk. Not malware: a harmless string every vendor agrees to
+  flag. Run this first, because it proves the endpoint, sensor, cloud and console are all
+  actually talking to each other before you go looking for anything subtle.
+
+teaches: |
+  - That the whole chain works end to end, so a later silence means something
+  - The difference between a DETECTION and a PREVENTION, which is a policy decision
+  - Where a detection surfaces, and how long it takes to get there
+  - What a file-write detection's process tree looks like
+
+steps:
+  - name: confirm a sensor is present before doing anything
+    shell: |
+      $s = Get-Service CSFalconService -ErrorAction SilentlyContinue
+      if (-not $s) { Write-Output 'NO SENSOR'; exit 1 }
+      Write-Output "sensor service: $($s.Status)"
+    expect_contains: "sensor service"
+
+  - name: write the EICAR string to disk
+    # Assembled at runtime on purpose: a literal EICAR string in the repo would be flagged
+    # by any scanner running on the machine that holds this checkout.
+    shell: |
+      New-Item -ItemType Directory -Force -Path C:\lab | Out-Null
+      $p1 = 'X5O!P%@AP[4\PZX54(P^)7CC)7}'
+      $p2 = '$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'
+      Set-Content -Path C:\lab\eicar.com -Value ($p1 + $p2) -Encoding ascii -NoNewline
+      Start-Sleep -Seconds 5
+      if (Test-Path C:\lab\eicar.com) { 'file still present' } else { 'file removed' }
+
+expect:
+  console: |
+    Endpoint security > Endpoint detections, within a minute or two. Filter to host
+    falcon-lab-win, open the detection and read the process tree: the writing process should
+    be powershell.exe, with its full command line captured.
+  detection: >
+    A malware detection on falcon-lab-win. Whether the file survives depends entirely on the
+    prevention policy applied to this host's group — which is the point of the exercise.
+
+verify:
+  - kind: endpoint
+    label: eicar file state
+    shell: |
+      if (Test-Path C:\lab\eicar.com) { 'present' } else { 'removed' }
+
+hint: >
+  Either outcome is a valid result. "present" means the policy is detect-only, so the
+  detection fired but nothing was blocked. "removed" means prevention quarantined it. If you
+  see NEITHER a detection nor a removal, the sensor is not reporting — run
+  `./lab.py sensor verify win` before assuming the scenario is wrong.

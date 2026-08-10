@@ -3,6 +3,8 @@ name: Install the Falcon sensor on Linux
 target: lnx
 baseline: bare
 mode: manual
+domain: 2
+difficulty: 1
 technique: null
 syllabus: CCFA - sensor deployment, RFM troubleshooting
 
@@ -47,12 +49,14 @@ expect:
   console: Host management -- falcon-lab-lnx appears, with its kernel version listed
   detection: none
 
-grade:
-  kind: sensor
-  hint: |
-    Work down the chain, because each step can fail independently:
-      dpkg -l falcon-sensor                          package present?
-      sudo /opt/CrowdStrike/falconctl -g --cid       CID set?
-      systemctl status falcon-sensor                 service running?
-      sudo /opt/CrowdStrike/falconctl -g --aid       registered with the cloud?
-      sudo /opt/CrowdStrike/falconctl -g --rfm-state should be false
+verify:
+  - kind: sensor
+    label: sensor health
+
+hint: |
+  Work down the chain, because each step fails independently:
+    dpkg -l falcon-sensor                          package present?
+    sudo /opt/CrowdStrike/falconctl -g --cid       CID set?
+    systemctl status falcon-sensor                 service running?
+    sudo /opt/CrowdStrike/falconctl -g --aid       registered with the cloud?
+    sudo /opt/CrowdStrike/falconctl -g --rfm-state should be false

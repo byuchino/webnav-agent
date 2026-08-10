@@ -2,7 +2,9 @@ id: sensor-install-win
 name: Install the Falcon sensor on Windows
 target: win
 baseline: bare          # deliberately a host with NO sensor -- that is the exercise
-mode: manual            # you install it; the lab only prepares and grades
+mode: manual
+domain: 2
+difficulty: 1            # you install it; the lab only prepares and grades
 technique: null
 syllabus: CCFA - sensor deployment and verification
 
@@ -43,11 +45,13 @@ expect:
   console: Host setup and management > Host management -- falcon-lab-win should appear
   detection: none -- installing a sensor is not a detection
 
-grade:
-  kind: sensor
-  hint: |
-    Not registered yet. Check in this order:
-      1. Is the service there at all?   Get-Service CSFalconService
-      2. Was a CID supplied?            a missing CID gives a running service and no AID
-      3. Can the host reach the cloud?  the lab allows egress; a proxy or DNS problem would not
-    Give it 60 seconds after starting the service before grading again.
+verify:
+  - kind: sensor
+    label: sensor health
+
+hint: |
+  Not registered yet. Check in this order:
+    1. Is the service there at all?   Get-Service CSFalconService
+    2. Was a CID supplied?            a missing CID gives a running service and no AID
+    3. Can the host reach the cloud?  the lab allows egress; a proxy would not
+  Give it 60 seconds after starting the service before grading again.
