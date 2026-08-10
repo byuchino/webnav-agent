@@ -105,8 +105,11 @@ def prep_steps(s):
         if base == "bare":
             out.append("That baseline has NO sensor — the installed sensor is discarded, and "
                        "reinstalling will register a new agent ID.")
+        elif base == "rfm":
+            out.append("That baseline has a sensor deliberately in Reduced Functionality Mode: "
+                       "it runs and reports in, and collects almost nothing.")
         else:
-            out.append("That baseline has a registered sensor.")
+            out.append("That baseline has a healthy, registered sensor.")
         out.append("Then boots it and waits for ssh. Expect one to three minutes.")
     for st in (s.get("setup") or []):
         out.append(f"Runs setup step: {st.get('name', 'unnamed')}.")
@@ -118,13 +121,41 @@ def prep_steps(s):
     return out
 
 
+def settle_sensor(host, progress=None, limit=120):
+    """Wait for the sensor to finish initialising after a boot.
+
+    `wait_ready` returns as soon as ssh answers, but the sensor needs another half minute or
+    so, and until it does falconctl reports the PRE-BOOT state. Reverting from the RFM
+    baseline back to a healthy one and checking immediately reports rfm-state=true on a host
+    that is fine -- a stale reading that looks exactly like a failed revert.
+    """
+    say = progress or (lambda _m: None)
+    import time as _t
+    say("waiting for the sensor to initialise")
+    prev, stable, t0 = None, 0, _t.time()
+    while _t.time() - t0 < limit:
+        r = sensor.verify(host)
+        cur = (r.get("running"), r.get("rfm"), r.get("aid") is not None)
+        stable = stable + 1 if cur == prev else 0
+        prev = cur
+        if stable >= 2:
+            say(f"sensor settled: {r.get('verdict')}")
+            return r
+        _t.sleep(8)
+    say("sensor did not settle within %ds; readings may be stale" % limit)
+    return sensor.verify(host)
+
+
 def prepare(sid, skip_revert=False, progress=None):
     s = get(sid)
     if s["target"] == "console" or s.get("baseline") == "none" or skip_revert:
         if progress:
             progress("no guest to prepare")
         return None
-    return core.revert(s["target"], s["baseline"], progress=progress)
+    r = core.revert(s["target"], s["baseline"], progress=progress)
+    if s["baseline"] in ("sensor", "rfm") and r.get("ready"):
+        settle_sensor(s["target"], progress=progress)
+    return r
 
 
 def run(sid, skip_revert=False, progress=None):

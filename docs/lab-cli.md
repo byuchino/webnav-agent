@@ -22,6 +22,19 @@ Every guest has two snapshots, and every scenario declares which one it needs:
 |---|---|---|
 | `bare` | `clean-preSensor` / `clean-cloudinit` | the sensor-installation exercises |
 | `sensor` | `clean-withSensor` | everything else |
+| `rfm` (lnx) | `clean-rfm` | the Reduced Functionality Mode exercise |
+
+The `rfm` baseline exists so that "put a host in RFM" is a button rather than an afternoon.
+Constructing it was not obvious: **booting an unsupported kernel is not enough.** A current
+Linux sensor on `--backend=auto` falls back to eBPF user mode and stays perfectly healthy —
+tested here on a 7.0 kernel against a 7.37 sensor, which reported `rfm-state=false`. It takes
+both an unsupported kernel *and* `falconctl -s --backend=kernel` to remove the user-mode
+escape route, at which point the reason becomes explicit:
+
+```
+rfm-state=true.
+rfm-reason=Modules file was not found, code=0xC0000034.
+```
 
 The runner reverts to the declared baseline before doing anything, so an exercise cannot
 silently begin from the wrong state — a sensor-install lesson that started on a host which
@@ -53,6 +66,14 @@ install was gone until an earlier snapshot rescued it. Linux survived identical 
 because ext4 journals; NTFS did not — so "it worked on the Linux guest" is not evidence.
 
 `--live` exists for when you want speed and accept the risk. Do not use it for a baseline.
+
+## Sensor readings are stale immediately after a revert
+
+`wait_ready` returns as soon as ssh answers, but the sensor needs another 30–45 seconds to
+initialise, and until it does `falconctl` reports the **pre-boot** state. Reverting from `rfm`
+to `sensor` and checking straight away reports `rfm-state=true` on a host that is fine — a
+stale reading indistinguishable from a failed revert. `prepare()` therefore waits for the
+sensor to settle whenever the baseline involves one, and says so in the progress log.
 
 ## Manual scenarios
 

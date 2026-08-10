@@ -22,7 +22,10 @@ LAB_GW = "10.77.0.1"
 # CCFA syllabus). `bare` is the starting point for that lesson; `sensor` is where every
 # detection scenario starts. A scenario declares which one it needs and the runner reverts
 # to it, so an exercise can never accidentally begin from the wrong state.
-BASELINES = ("bare", "sensor")
+# A third baseline, because "put a host in RFM" should be a button rather than an afternoon.
+# Building it took an unsupported kernel AND forcing the sensor's backend to kernel mode --
+# on `auto` a modern Linux sensor simply falls back to eBPF user mode and stays healthy.
+BASELINES = ("bare", "sensor", "rfm")
 
 HOSTS = {
     "win": {
@@ -43,7 +46,8 @@ HOSTS = {
         "ip": "10.77.0.11",
         "user": "labadmin",
         "name": "falcon-lab-lnx",
-        "snapshots": {"bare": "clean-cloudinit", "sensor": "clean-withSensor"},
+        "snapshots": {"bare": "clean-cloudinit", "sensor": "clean-withSensor",
+                      "rfm": "clean-rfm"},
         "probe_port": 22,
     },
     "dhcp": {
