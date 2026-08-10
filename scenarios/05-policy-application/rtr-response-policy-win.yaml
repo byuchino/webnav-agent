@@ -1,0 +1,126 @@
+id: rtr-response-policy-win
+name: Real Time Response on Windows — reach a host from the console and run commands on it
+target: win
+baseline: sensor
+mode: guided
+domain: 5
+difficulty: 2
+duration_min: 30
+objective: "5.x — configure response policies and the RTR role tiers; connect to a Windows host and run commands"
+requires: [lab-host-group, sensor-install-win]
+
+summary: >
+  The Windows counterpart to rtr-response-policy-lnx. Real Time Response is how you run commands
+  on an endpoint you have no shell on, straight from the Falcon console — the same three gates
+  and role tiers as on Linux, but the command set is Windows-flavoured (reg, eventlog, ipconfig)
+  and RTR runs as SYSTEM. You connect to the healthy Windows guest, change its state from the
+  browser, and the grader proves out of band that your command really ran.
+
+teaches: |
+  - That RTR is one capability across Windows, macOS and Linux — the gates and roles are the
+    same; only the commands differ per OS
+  - The three gates: the host is online, it is in a group assigned a RESPONSE POLICY with Real
+    Time Response enabled, and you hold a Real Time Responder ROLE (Falcon Administrator does NOT
+    include RTR)
+  - The three role tiers: Read Only Analyst (recon), Active Responder (recon + get + state
+    changes like mkdir/mv/cp/rm/kill), Administrator (+ put, run, custom scripts)
+  - Windows-specific RTR reach: `reg` to read the registry, `eventlog` to pull Windows event
+    logs, `ipconfig`, and — because RTR runs as SYSTEM — access a normal admin shell may not have
+  - That run and Custom Scripts are OFF in the default response policy, so executing a binary or
+    a PowerShell script via RTR needs BOTH an Administrator role and a policy that permits it
+  - That RTR sessions are audited and time-limited (they must be refreshed)
+
+setup:
+  - name: confirm the sensor is healthy and clear any previous proof marker
+    shell: |
+      $s = Get-Service CSFalconService -ErrorAction SilentlyContinue
+      if (-not $s -or $s.Status -ne 'Running') { Write-Output 'SENSOR NOT RUNNING'; exit 1 }
+      Remove-Item 'C:\rtr-lab-proof' -Recurse -Force -ErrorAction SilentlyContinue
+      if (Test-Path 'C:\rtr-lab-proof') { Write-Output 'marker-before: present' }
+      else { Write-Output 'marker-before: absent' }
+    expect_contains: "marker-before: absent"
+
+instructions: |
+  The Windows guest is on a clean, healthy sensor baseline. Any leftover proof marker has been
+  cleared. This is the same exercise as rtr-response-policy-lnx; do it here to see RTR on a
+  different OS and to use the Windows-only commands.
+
+  1. MAKE SURE RTR CAN RUN ON THIS HOST (the policy gate). Endpoint security > Response
+     policies. Confirm the policy applied to the **Falcon Lab** group has **Real Time Response
+     enabled**, or clone the Default response policy, assign the clone to Falcon Lab, and keep
+     RTR enabled. Note that **Custom Scripts** and **run** are OFF in the default policy — the
+     two higher-risk capabilities, gated separately on purpose.
+
+  2. MAKE SURE YOU MAY RUN IT (the role gate). You need a Real Time Responder role — Read Only
+     Analyst, Active Responder, or Administrator. Falcon Administrator on its own does **not**
+     grant RTR. For step 5 you need at least **Active Responder**.
+
+  3. CONNECT. Host management (or a detection's Event Actions), select FALCON-LAB-WIN, and choose
+     **Connect to host**. If it is unavailable, it is almost always the role or the policy from
+     steps 1–2, not the host.
+
+  4. RECONNAISSANCE (Read Only tier), using Windows commands:
+
+         ps                                  # running processes, incl. CSFalconService
+         ls 'C:\Program Files\CrowdStrike'   # the sensor's files
+         reg query HKLM\SYSTEM\CrowdStrike   # sensor registry presence
+         ipconfig                            # network config
+         netstat                             # current connections
+         eventlog view Application           # pull a Windows event log
+
+     `reg`, `ipconfig` and `eventlog` are Windows-specific and have no Linux equivalent — this
+     is why doing RTR on both platforms is worth it. All are read-only.
+
+  5. CHANGE THE HOST'S STATE (Active Responder tier), and leave proof. Run:
+
+         mkdir C:\rtr-lab-proof
+
+     `mkdir` modifies the host, so it needs Active Responder or higher. Because RTR runs as
+     SYSTEM, this lands at the drive root. You just changed a real Windows endpoint from a
+     browser, with no RDP and no SSH.
+
+  6. Check your work:
+         lab grade rtr-response-policy-win
+
+     The grader confirms — over the lab's own out-of-band channel — that C:\rtr-lab-proof now
+     exists on the host. If it does, your RTR command genuinely executed there.
+
+  7. Optional, to feel the second lock: try `run` or `runscript` (for example a one-line
+     PowerShell script). Under the Default response policy these are refused even for an
+     Administrator, because the POLICY has run and Custom Scripts disabled. Enable them on the
+     Falcon Lab response policy, wait for it to apply, and try again — role and policy both had
+     to agree.
+
+expect:
+  console: |
+    Response policies showing a policy assigned to the Falcon Lab group with RTR enabled, and a
+    Real Time Response session connected to FALCON-LAB-WIN with the recon and mkdir commands run.
+  detection: none
+
+verify:
+  - kind: console
+    label: a response policy is assigned to the Falcon Lab group
+    path: /policies/response
+    api_match: /api2/
+    expect_contains: "Falcon Lab"
+  - kind: endpoint
+    label: "(functional) an RTR command actually ran — C:\\rtr-lab-proof exists on the host"
+    shell: "if (Test-Path 'C:\\rtr-lab-proof') { 'present' } else { 'absent' }"
+    expect_contains: present
+  - kind: attest
+    label: understanding
+    items:
+      - "I confirmed the Falcon Lab group's response policy has Real Time Response enabled"
+      - "I connected to the Windows host with Connect to host — no RDP or SSH involved"
+      - "I ran Windows-specific recon (reg, ipconfig, eventlog) and one state-changing command"
+      - "I can name RTR's three role tiers and one command unique to each"
+      - "I know Falcon Administrator alone does not grant RTR"
+      - "I can explain why run and Custom Scripts are gated by BOTH the role and the policy"
+
+hint: >
+  If Connect to host is unavailable, work the gates in order: an RTR role (Falcon Administrator
+  does not count) and a Falcon Lab response policy with RTR enabled. If the console check passes
+  but the functional check says 'absent', the mkdir did not run — confirm you are Active
+  Responder or higher (Read Only cannot mkdir) and that the session was connected when you ran
+  it. On Windows the marker lands at C:\rtr-lab-proof because RTR runs as SYSTEM. Re-grade after
+  the marker is created.

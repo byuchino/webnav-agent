@@ -1,4 +1,4 @@
-id: rtr-response-policy
+id: rtr-response-policy-lnx
 name: Real Time Response — reach a host from the console and run commands on it
 target: lnx
 baseline: sensor
