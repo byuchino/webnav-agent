@@ -61,9 +61,13 @@ instructions: |
      Falcon Administrator on its own does **not** grant RTR. For this exercise you want at least
      **Active Responder**, because step 5 changes the host's state.
 
-  3. CONNECT. Host management (or a detection's Event Actions), select falcon-lab-lnx, and choose
-     **Connect to host**. If it is greyed out or fails to authorise, it is almost always the
-     policy or the role from steps 1–2, not the host. The host is online.
+  3. CONNECT. In Host management, **Connect to host** is on the host row's **⋮ (three-dots)**
+     menu — close the host summary panel first if it is open, because it overlaps those dots.
+     (The same action is on a detection's Event Actions menu.) If the item instead reads
+     **"Cannot connect to host" with a lock**, that is a permission gate, not a host problem:
+     your user is not entitled to RTR — almost always a missing Responder role (Falcon
+     Administrator does not grant it), or a response policy with RTR disabled from step 1. Fix
+     the role/policy and it enables. The host itself is online.
 
   4. RECONNAISSANCE (Read Only tier). In the RTR session, run a few read-only commands to feel
      what reconnaissance from the console looks like:

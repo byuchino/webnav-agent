@@ -64,20 +64,31 @@ instructions: |
      console surfaces the status, not the reason. That gap between "looks fine" and "is fine",
      and the fact that the reason lives on the host, is exactly why step 2 exists.
 
-  2. REACH IT WITH RTR, not SSH. From the host's detail page choose **Connect to host** (the
-     same action appears on a detection's Event Actions menu). Before it connects, know what has
-     to be true — this is the part the exam tests:
+  2. REACH IT WITH RTR, not SSH. **Connect to host** lives on the host row's **⋮ (three-dots)**
+     menu — and if the summary panel is open it sits ON TOP of those dots, so **close the summary
+     panel first**. The same action appears on a detection's Event Actions menu. Before it
+     connects, know what has to be true — this is the part the exam tests:
 
        - the host is online (an RFM host still is),
        - it is in a group assigned a **response policy with Real Time Response enabled**,
        - and you hold a **Real Time Responder** role. The **Falcon Administrator role does not
-         include RTR** — a common real-world surprise. If Connect to host is greyed out or the
-         session fails to authorise, that is almost always the role or the policy, not the host.
+         include RTR** — a common real-world surprise.
 
-     First real question to answer for yourself: **does RTR even connect to a host in RFM?**
-     Try it and record what happens. Whether a degraded sensor still accepts an RTR session is
-     part of understanding RFM's impact (objective 3.4), and it is better learned by trying than
-     by being told.
+     Read the menu item's state, because it tells you which gate you are behind:
+
+       - If it reads **"Cannot connect to host" with a lock** and is greyed out, that is a
+         PERMISSION gate — your user is not entitled to RTR. It is almost always a missing
+         Responder role (Falcon Administrator alone does not grant it); a response policy with
+         RTR disabled can gate it too. The lock is about YOU, not the host — it would look the
+         same on a perfectly healthy host. Fix it by assigning your user an RTR role (Active
+         Responder is enough), then return here.
+       - If it is **enabled**, you hold RTR and can connect.
+
+     First real question to answer once you CAN connect: **does RTR even connect to a host in
+     RFM?** Because the lock above is a permission gate, it tells you nothing about this — you
+     only learn the answer with a Responder role in hand. Try it then and record what happens;
+     whether a degraded sensor still accepts an RTR session is part of understanding RFM's
+     impact (objective 3.4), and is better learned by trying than by being told.
 
   3. RECONNOITRE OVER RTR. If the session connects, run a few read-only commands — `ps` to see
      `falcon-sensor` running, `ls` and `cat` around `/opt/CrowdStrike` and the sensor logs.

@@ -55,9 +55,13 @@ instructions: |
      Analyst, Active Responder, or Administrator. Falcon Administrator on its own does **not**
      grant RTR. For step 5 you need at least **Active Responder**.
 
-  3. CONNECT. Host management (or a detection's Event Actions), select FALCON-LAB-WIN, and choose
-     **Connect to host**. If it is unavailable, it is almost always the role or the policy from
-     steps 1–2, not the host.
+  3. CONNECT. In Host management, **Connect to host** is on the host row's **⋮ (three-dots)**
+     menu — close the host summary panel first if it is open, because it overlaps those dots.
+     (The same action is on a detection's Event Actions menu.) If the item instead reads
+     **"Cannot connect to host" with a lock**, that is a permission gate, not a host problem:
+     your user is not entitled to RTR — almost always a missing Responder role (Falcon
+     Administrator does not grant it), or a response policy with RTR disabled from step 1. Fix
+     the role/policy and it enables.
 
   4. RECONNAISSANCE (Read Only tier), using Windows commands:
 
