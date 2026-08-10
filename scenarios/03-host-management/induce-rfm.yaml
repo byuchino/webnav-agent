@@ -25,8 +25,10 @@ teaches: |
   - The three gates on RTR: the host must be online, in a group with a response policy that has
     RTR enabled, and you must hold an RTR role — the Falcon Administrator role does NOT include
     RTR, and the default response policy has `run` and Custom Scripts disabled
-  - Whether RTR itself still works on a sensor in RFM — you confirm this hands-on, because it is
-    part of understanding RFM's impact
+  - That RTR still works on a Linux sensor in RFM: it connects AND runs commands (confirmed in
+    this lab — `ls` and `ps` returned real output on the RFM host). RFM degrades telemetry and
+    prevention, but the RTR response path rides the sensor's cloud channel, which RFM keeps up —
+    so a host that falls into RFM is still reachable and remediable
   - What is lost: on Linux, network containment does not work in RFM
   - That a modern sensor on `auto` avoids RFM entirely by falling back to eBPF user mode —
     which is why this state had to be constructed deliberately
@@ -84,13 +86,17 @@ instructions: |
          Responder is enough), then return here.
        - If it is **enabled**, you hold RTR and can connect.
 
-     First real question to answer once you CAN connect: **does RTR even connect to a host in
-     RFM?** Because the lock above is a permission gate, it tells you nothing about this — you
-     only learn the answer with a Responder role in hand. Try it then and record what happens;
-     whether a degraded sensor still accepts an RTR session is part of understanding RFM's
-     impact (objective 3.4), and is better learned by trying than by being told.
+     Once you CAN connect, an important question about RFM's impact (objective 3.4) answers
+     itself: **does RTR still work on a host in RFM?** It does — confirmed in this lab. The
+     session connects (status **Connected**) and commands run: `ls /opt/CrowdStrike` and `ps`
+     both returned real output on the RFM host. The reason is that RFM degrades telemetry and
+     prevention — the kernel-level work — but RTR rides the sensor's cloud channel, which stays
+     up, which is also why the host still reports online. Operationally that is good news: a host
+     that falls into RFM is still reachable and remediable over RTR. Connect and run a couple of
+     commands yourself to see it. (Any locked "Cannot connect to host" you saw earlier was a
+     permission gate on YOUR account — a missing Responder role — unrelated to the host's RFM.)
 
-  3. RECONNOITRE OVER RTR. If the session connects, run a few read-only commands — `ps` to see
+  3. RECONNOITRE OVER RTR. In the RTR session, run a few read-only commands — `ps` to see
      `falcon-sensor` running, `ls` and `cat` around `/opt/CrowdStrike` and the sensor logs.
      Reading the RFM reason and history the way the setup step did means running the falconctl
      binary, i.e. the RTR **`run`** command — and `run` needs the **RTR Administrator** role AND
@@ -143,7 +149,7 @@ verify:
       - "I found the host using the RFM filter in Host management (RFM column turned on)"
       - "The summary panel showed a 'Host is in RFM' warning banner, and a recent Last seen in Host Info"
       - "I got the RFM reason from the host itself (falconctl via RTR) — the console shows status, not reason"
-      - "I tried to Connect to host with RTR and can say whether it connected on an RFM host"
+      - "I connected via RTR to the RFM host and ran commands — confirming RTR works despite RFM"
       - "I can name RTR's three gates: online, a response policy with RTR enabled, and an RTR role"
       - "I know the Falcon Administrator role does not by itself grant RTR"
       - "I can say what network containment does on a Linux host in RFM"
