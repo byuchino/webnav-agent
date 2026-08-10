@@ -1,0 +1,92 @@
+id: stale-hosts-retention
+name: Duplicate and stale hosts — hide, delete, and automate it
+target: console
+mode: manual
+domain: 3
+difficulty: 2
+duration_min: 20
+objective: "3.2, 3.6, 3.7 — disabling detections, locating inactive sensors, retention periods"
+requires: [sensor-install-win]
+
+summary: >
+  Clean up the duplicate host records this lab has already created, then set a policy so it
+  stops being manual. Unlike most exercises this one is not contrived: reinstalling a sensor
+  really does leave a second record behind, and yours already has one.
+
+teaches: |
+  - Why a reimaged or rebuilt machine appears twice: a new install means a new agent ID, and
+    the CID cannot know it is the same hardware
+  - How to identify which duplicate is live — hostname and serial match, Last seen decides
+  - The difference between HIDE (reversible, moves to Hidden hosts) and DELETE (not manually
+    reversible, though the host returns if it ever reports in again)
+  - That host retention policies automate both, and that a manual delete overrides them
+  - That "how long is an inactive sensor retained" has no fixed answer — it is whatever your
+    retention policy says
+
+instructions: |
+  This lab created the mess you are about to clean up. When a corrupt snapshot forced a
+  rollback, the sensor install was wiped and reinstalling registered a new agent ID:
+
+      aid 5cbc725e3c   sensor 7.38.21003   last seen earlier   <- orphaned
+      aid ea4f0559d3   sensor 7.40.21306   last seen recently  <- live
+
+  1. Host setup and management > Manage endpoints > Host management. Sort by Hostname and
+     find the duplicate FALCON-LAB-WIN entries.
+
+     The documented way to tell them apart: where several hosts share a Hostname and Serial
+     number, the live one is the one with the most recent **Last seen**. Everything older is
+     a leftover from a reinstall.
+
+  2. Hide the stale one. Confirm it leaves the Hosts tab and appears under Hidden hosts, and
+     note that you could restore it — hiding is reversible, which is why it is the right
+     default for a machine you will rebuild again.
+
+  3. Look at Delete as well, without necessarily using it. Read what it does differently:
+     a deleted host cannot be manually restored, though it comes back automatically if the
+     machine ever reports in again. Note also that deleting a host overrides any retention
+     policy assigned to it.
+
+  4. Now stop doing this by hand. Host setup and management > Host retention policies. Look
+     at the settings a retention policy exposes — auto-hide after a period of inactivity, and
+     optionally permanent removal after a longer one. Create or assign a policy for the
+     **Falcon Lab** group with a short auto-hide period, since this lab will keep generating
+     duplicates every time a sensor-install exercise runs.
+
+  5. Answer objective 3.7 for yourself: how long is an inactive sensor retained here? The
+     honest answer is not a number to memorise — it is whatever the applicable retention
+     policy says, and knowing where that is configured is the durable version of the answer.
+
+  6. Check your work:
+         lab grade stale-hosts-retention
+
+expect:
+  console: |
+    Host management with only one FALCON-LAB-WIN in the Hosts tab, the stale one under Hidden
+    hosts, and a retention policy assigned to the Falcon Lab group.
+  detection: none
+
+verify:
+  - kind: console
+    label: only one live FALCON-LAB-WIN remains
+    path: /host-management/hosts
+    api_match: /api2/devices
+    expect_contains: "falcon-lab"
+  - kind: console
+    label: a retention policy references the lab group
+    path: /host-management/policies/host-retention
+    api_match: /api2/
+    expect_contains: "Falcon Lab"
+  - kind: attest
+    label: understanding
+    items:
+      - "I hid the stale duplicate and confirmed it moved to Hidden hosts"
+      - "I can state the difference between hiding and deleting a host"
+      - "A retention policy now covers the Falcon Lab group"
+      - "I can say where the inactive-host retention period is configured, not just its value"
+
+hint: >
+  The first check only confirms the hosts page returned lab data — it cannot count duplicates
+  for you, because the console's response shape is not something to assert on. Judge that one
+  by eye in the Hosts tab. If the retention check fails, the policy probably exists but is not
+  assigned to Falcon Lab: creation and assignment are separate steps, and assignment is the
+  one people skip.
