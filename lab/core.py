@@ -119,9 +119,15 @@ def snapshot_create(name, snap, description="", live=False):
     return snap
 
 
-def revert(name, baseline="bare", wait=True):
+def revert(name, baseline="bare", wait=True, progress=None):
     """Roll a guest back to a baseline. Seconds, versus a 20-minute reinstall -- which is
-    most of why the lab is worth having: every exercise starts from an identical state."""
+    most of why the lab is worth having: every exercise starts from an identical state.
+
+    `progress` is an optional callable taking one string. Rolling back and booting a guest
+    takes minutes, and a caller with no idea whether anything is happening will reasonably
+    conclude it has hung -- so every stage announces itself.
+    """
+    say = progress or (lambda _m: None)
     h = config.host(name)
     snap = h["snapshots"].get(baseline)
     if not snap:
@@ -134,7 +140,9 @@ def revert(name, baseline="bare", wait=True):
             extra = (f"\n  Build it once:  ./lab.py sensor install {name} --ccid <CID>"
                      f"\n                  ./lab.py snapshot {name} {snap} -d 'sensor registered'")
         raise LabError(f"{name}: no {snap!r} snapshot yet (have: {have}){extra}")
+    say(f"rolling {name} back to {snap} (discards current state)")
     pve(f"{_ctl(h)} rollback {h['vmid']} {shlex.quote(snap)}", timeout=600)
+    say("rollback applied; waiting for the Proxmox lock to clear")
 
     # Proxmox holds a lock while the rollback finalises, so a start issued immediately after
     # fails with "VM is locked". This used to be `start || true`, which hid that completely:
@@ -154,6 +162,7 @@ def revert(name, baseline="bare", wait=True):
     for attempt in range(4):
         try:
             if vm_status(name) != "running":
+                say(f"starting {name}" + (f" (attempt {attempt + 1})" if attempt else ""))
                 pve(f"{_ctl(h)} start {h['vmid']}", timeout=180)
             last = None
             break
@@ -164,7 +173,9 @@ def revert(name, baseline="bare", wait=True):
         raise LabError(f"{name}: rolled back to {snap} but would not start: {last}")
     if not wait:
         return {"snapshot": snap, "ready": None}
-    ok, secs = wait_ready(name)
+    say(f"booting; waiting for {name} to accept ssh")
+    ok, secs = wait_ready(name, progress=say)
+    say(f"{name} is up after {secs}s" if ok else f"{name} did NOT come up within {secs}s")
     return {"snapshot": snap, "ready": ok, "seconds": secs}
 
 
@@ -182,11 +193,17 @@ def reachable(name, timeout=4):
         return False
 
 
-def wait_ready(name, limit=480):
+def wait_ready(name, limit=480, progress=None):
+    say = progress or (lambda _m: None)
     t0 = time.time()
+    last_note = 0
     while time.time() - t0 < limit:
         if reachable(name):
             return True, round(time.time() - t0)
+        waited = round(time.time() - t0)
+        if waited - last_note >= 15:
+            last_note = waited
+            say(f"  still booting ({waited}s of {limit}s)")
         time.sleep(5)
     return False, round(time.time() - t0)
 

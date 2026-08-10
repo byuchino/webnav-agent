@@ -10,6 +10,9 @@ It must run somewhere that can reach both the hypervisor and the lab subnet.
 > it somewhere only you can reach and do not expose it beyond your own network.
 """
 import asyncio
+import threading
+import time
+import uuid
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -28,6 +31,54 @@ DOMAINS = {
 async def _off(fn, *a, **kw):
     """Everything here shells out; keep it off the event loop."""
     return await asyncio.to_thread(fn, *a, **kw)
+
+
+# A long POST that returns only when finished is indistinguishable from a hang. Runs become
+# jobs: start one, poll it, watch the stages report themselves as they happen.
+JOBS = {}
+_LOCK = threading.Lock()
+
+
+def _new_job():
+    jid = uuid.uuid4().hex[:12]
+    with _LOCK:
+        JOBS[jid] = {"lines": [], "done": False, "result": None, "started": time.time()}
+    # Keep the last few only; this is a lab panel, not a job server.
+    with _LOCK:
+        for old in sorted(JOBS, key=lambda k: JOBS[k]["started"])[:-12]:
+            JOBS.pop(old, None)
+    return jid
+
+
+def _say(jid, msg):
+    with _LOCK:
+        j = JOBS.get(jid)
+        if j is not None:
+            j["lines"].append({"t": round(time.time() - j["started"]), "m": str(msg)})
+
+
+def _run_job(jid, fn, *a, **kw):
+    try:
+        res = fn(*a, progress=lambda m: _say(jid, m), **kw)
+        with _LOCK:
+            JOBS[jid]["result"] = res
+    except Exception as e:  # noqa: BLE001
+        _say(jid, f"ERROR: {e}")
+        with _LOCK:
+            JOBS[jid]["result"] = {"error": str(e)}
+    finally:
+        with _LOCK:
+            JOBS[jid]["done"] = True
+
+
+@app.get("/api/job/{jid}")
+async def api_job(jid: str):
+    with _LOCK:
+        j = JOBS.get(jid)
+        if not j:
+            return JSONResponse({"error": "unknown job"}, status_code=404)
+        return JSONResponse({"lines": list(j["lines"]), "done": j["done"],
+                             "result": j["result"]})
 
 
 @app.get("/api/status")
@@ -54,16 +105,30 @@ async def api_scenarios():
         d = {k: v for k, v in s.items() if k not in ("steps", "setup")}
         d["kinds"] = sorted({v["kind"] for v in (s.get("verify") or [])})
         d["domain_name"] = DOMAINS.get(s.get("domain", 0), "?")
+        d["prep"] = scenarios.prep_steps(s)
         out.append(d)
     return JSONResponse(out)
 
 
 @app.post("/api/run/{sid}")
 async def api_run(sid: str, no_revert: bool = False):
+    """Returns immediately with a job id; poll /api/job/<id> for progress."""
     try:
-        return JSONResponse(await _off(scenarios.run, sid, no_revert))
+        scenarios.get(sid)
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": str(e)}, status_code=400)
+    jid = _new_job()
+    threading.Thread(target=_run_job, args=(jid, scenarios.run, sid, no_revert),
+                     daemon=True).start()
+    return JSONResponse({"job": jid})
+
+
+@app.post("/api/revert-job/{name}/{baseline}")
+async def api_revert_job(name: str, baseline: str):
+    jid = _new_job()
+    threading.Thread(target=_run_job, args=(jid, core.revert, name, baseline),
+                     daemon=True).start()
+    return JSONResponse({"job": jid})
 
 
 @app.post("/api/grade/{sid}")
@@ -123,12 +188,17 @@ PAGE = r"""
   .attest{margin:2px 0 0 83px;color:var(--dim);font-size:12.5px}
   .attest div{padding:1px 0}
   .verdict{font-weight:650;font-size:13px;margin-top:8px}
+  details.prep{margin-top:7px;font-size:12.5px;color:var(--dim)}
+  details.prep summary{cursor:pointer;user-select:none}
+  details.prep ul{margin:6px 0 0;padding-left:20px}
+  details.prep li{padding:1px 0}
 </style>
 <div class="wrap">
   <h1>Falcon lab</h1>
   <div class="sub">Reverting rolls a guest back to a clean baseline in seconds. Grading reports
     what is actually true &mdash; a check that could not run is never a pass.</div>
   <div id="hosts"></div>
+  <div id="out-hosts-log"></div>
   <div id="scen"></div>
 </div>
 <script>
@@ -159,9 +229,14 @@ async function loadHosts(){
 
 async function revert(host, baseline, btn){
   if(!confirm(`Revert ${host} to the "${baseline}" baseline? Current state is discarded.`)) return;
-  btn.disabled=true;
-  const r = await call(`/api/revert/${host}/${baseline}`, btn, 'reverting', 900);
-  if(r.error) alert(r.error);
+  btn.disabled=true; const t=btn.textContent;
+  const poll = setInterval(loadHosts, 8000);
+  try{
+    const start = await (await fetch(`/api/revert-job/${host}/${baseline}`,{method:'POST'})).json();
+    const r = await follow(start.job, 'hosts-log', btn, 'reverting');
+    if(r.error) alert(r.error);
+  } catch(e){ alert(e.message); }
+  finally { clearInterval(poll); btn.disabled=false; btn.textContent=t; loadHosts(); }
 }
 
 async function loadScen(){
@@ -184,6 +259,9 @@ async function loadScen(){
         <button onclick="grade('${s.id}',this)">grade</button>
       </div>
       <div class="meta" style="margin-top:5px">${esc(s.summary||'')}</div>
+      <details class="prep"><summary>what pressing
+        ${s.mode==='auto'?'run':'set up'} will do</summary>
+        <ul>${(s.prep||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>
       <div class="row" style="margin-top:5px">
         <span class="meta mono">${esc((s.kinds||[]).join(' + ')) || 'no checks'}</span>
         ${s.duration_min?`<span class="meta">~${s.duration_min} min</span>`:''}
@@ -224,6 +302,27 @@ async function call(url, btn, label, secs){
   }
 }
 
+// Poll a job and render each stage as it is reported. The whole point is that a revert
+// announces "rolling back", "starting", "still booting (45s)" rather than sitting silent.
+async function follow(jid, id, btn, label){
+  const started = Date.now();
+  let seen = 0;
+  while(true){
+    await new Promise(r=>setTimeout(r, 1200));
+    let j;
+    try { j = await (await fetch(`/api/job/${jid}`)).json(); }
+    catch(e){ return {error:`lost contact with the job: ${e.message}`}; }
+    if(j.error) return {error:j.error};
+    if(j.lines.length !== seen){
+      seen = j.lines.length;
+      box(id, `<pre>` + j.lines.map(l=>`  ${String(l.t).padStart(4)}s  ${esc(l.m)}`).join('\n') + `</pre>`);
+    }
+    btn.textContent = `${label} ${Math.round((Date.now()-started)/1000)}s`;
+    if(j.done) return j.result || {};
+    if((Date.now()-started)/1000 > 1800) return {error:'still running after 30 min; check the CLI'};
+  }
+}
+
 async function run(id, btn){
   const card = btn.closest('.card');
   const destructive = card && card.dataset.baseline && card.dataset.baseline !== 'none';
@@ -232,7 +331,14 @@ async function run(id, btn){
       + `Anything currently on that guest is discarded — including an installed sensor if the `
       + `baseline is "bare". Continue?`)) return;
   btn.disabled=true;
-  const r = await call(`/api/run/${id}`, btn, 'working', 900);
+  const t = btn.textContent;
+  const poll = setInterval(loadHosts, 8000);
+  let r;
+  try{
+    const start = await (await fetch(`/api/run/${id}`, {method:'POST'})).json();
+    r = start.error ? start : await follow(start.job, id, btn, 'working');
+  } catch(e){ r = {error:`could not start: ${e.message}`}; }
+  finally { clearInterval(poll); btn.disabled=false; btn.textContent=t; loadHosts(); }
   if(r.error){ box(id, `<pre class="bad">${esc(r.error)}</pre>`); return; }
   let out = '';
   if(r.prepared) out += `baseline -> ${r.prepared.snapshot} (${r.prepared.ready?'ready':'NOT READY'})\n\n`;

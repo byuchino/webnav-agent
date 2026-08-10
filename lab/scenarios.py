@@ -91,20 +91,50 @@ def unmet_prerequisites(sid, all_=None):
     return [r for r in (s.get("requires") or []) if r not in all_]
 
 
-def prepare(sid, skip_revert=False):
+def prep_steps(s):
+    """What pressing "set up" will actually do, derived from the definition rather than
+    written by hand -- a hand-written description drifts from the behaviour it describes."""
+    out = []
+    if s["target"] == "console" or s.get("baseline") in (None, "none"):
+        out.append("Nothing is changed on any guest; this is console work.")
+    else:
+        host, base = s["target"], s["baseline"]
+        snap = (config.HOSTS.get(host, {}).get("snapshots") or {}).get(base, base)
+        out.append(f"Rolls {host} back to the '{base}' baseline (snapshot {snap}), "
+                   f"discarding whatever is on it now.")
+        if base == "bare":
+            out.append("That baseline has NO sensor — the installed sensor is discarded, and "
+                       "reinstalling will register a new agent ID.")
+        else:
+            out.append("That baseline has a registered sensor.")
+        out.append("Then boots it and waits for ssh. Expect one to three minutes.")
+    for st in (s.get("setup") or []):
+        out.append(f"Runs setup step: {st.get('name', 'unnamed')}.")
+    if s["mode"] == "auto":
+        for st in (s.get("steps") or []):
+            out.append(f"Runs: {st.get('name', 'unnamed')}.")
+    else:
+        out.append("Then stops and hands over to you — nothing else is done automatically.")
+    return out
+
+
+def prepare(sid, skip_revert=False, progress=None):
     s = get(sid)
     if s["target"] == "console" or s.get("baseline") == "none" or skip_revert:
+        if progress:
+            progress("no guest to prepare")
         return None
-    return core.revert(s["target"], s["baseline"])
+    return core.revert(s["target"], s["baseline"], progress=progress)
 
 
-def run(sid, skip_revert=False):
+def run(sid, skip_revert=False, progress=None):
+    say = progress or (lambda _m: None)
     s = get(sid)
     result = {"scenario": sid, "name": s["name"], "target": s["target"],
               "mode": s["mode"], "domain": s.get("domain"), "steps": [],
               "expect": s.get("expect", {})}
 
-    result["prepared"] = prepare(sid, skip_revert)
+    result["prepared"] = prepare(sid, skip_revert, progress=say)
 
     if s["mode"] in ("manual", "guided"):
         result["instructions"] = (s.get("instructions") or "").strip()
@@ -122,6 +152,7 @@ def run(sid, skip_revert=False):
             result["steps"].append({"n": i, "name": name, "ok": None,
                                     "out": "console scenario: no guest to run on"})
             continue
+        say(f"step {i}: {name}")
         rc, out, err = core.guest(host, cmd, timeout=step.get("timeout", 300))
         ok = (rc == 0)
         if "expect_contains" in step:
