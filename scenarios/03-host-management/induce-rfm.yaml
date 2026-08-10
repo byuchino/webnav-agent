@@ -5,22 +5,28 @@ baseline: rfm
 mode: guided
 domain: 3
 difficulty: 2
-duration_min: 20
+duration_min: 25
 objective: "3.4, 3.5 — explain the impact of RFM and why it is caused; find hosts in RFM"
-requires: [sensor-install-lnx]
+requires: [sensor-install-lnx, lab-host-group]
 
 summary: >
-  Press set up and the Linux guest comes back already in RFM. Your job is to notice, work out
-  why, and find it from the console — not to break it yourself. Reading about RFM teaches the
-  definition; looking at a sensor that reports in and collects almost nothing teaches why it
-  matters.
+  Press set up and the Linux guest comes back already in RFM. Find it from the console, work
+  out why, and reach it the way you would in production — with Real Time Response, not SSH.
+  Reading about RFM teaches the definition; investigating a live degraded sensor from the
+  console teaches why it matters and how you would actually respond to one.
 
 teaches: |
   - That an RFM host is ONLINE, recently seen, and its service is active — every naive check
     passes
   - The actual cause: no kernel module matching the running kernel
-  - That falconctl will tell you the reason and the history, not just the state
   - How to find RFM hosts from the console before someone relies on one for protection
+  - Real Time Response (RTR) as the real-world way to reach a host you have no shell on — which
+    is the whole reason RTR exists, and is on the CCFA exam
+  - The three gates on RTR: the host must be online, in a group with a response policy that has
+    RTR enabled, and you must hold an RTR role — the Falcon Administrator role does NOT include
+    RTR, and the default response policy has `run` and Custom Scripts disabled
+  - Whether RTR itself still works on a sensor in RFM — you confirm this hands-on, because it is
+    part of understanding RFM's impact
   - What is lost: on Linux, network containment does not work in RFM
   - That a modern sensor on `auto` avoids RFM entirely by falling back to eBPF user mode —
     which is why this state had to be constructed deliberately
@@ -35,66 +41,96 @@ setup:
     expect_contains: "rfm-state=true"
 
 instructions: |
-  The guest has been reverted to a baseline where the sensor is already in RFM. Note what the
-  setup step printed: the service is **active**. Nothing about "is it running" tells you this
-  host is barely protected.
+  The guest has been reverted to a baseline where the sensor is already in RFM. The setup step
+  read the truth straight off the box over SSH — but that is a lab convenience. In production
+  you would have no shell on the endpoint, which is exactly the situation Real Time Response is
+  built for. So do this the real way.
 
-  1. Ask the sensor why, on the host itself:
+  1. FIND IT (objective 3.5). Host setup and management > Manage endpoints > Host management,
+     and filter to hosts in Reduced Functionality Mode — under the hood that filter is the FQL
+     `reduced_functionality_mode:'yes'`, the same field for every platform. Confirm
+     falcon-lab-lnx appears. Open its detail panel and note two things that make RFM dangerous:
+     it still shows **online** with a recent **Last seen**, and the panel gives you the RFM
+     status and reason without touching the host at all. The gap between "looks fine" and "is
+     fine" is the whole point.
 
-         ssh -i ~/.ssh/falcon_lab_ed25519 labadmin@10.77.0.11
-         sudo /opt/CrowdStrike/falconctl -g --rfm-state
-         sudo /opt/CrowdStrike/falconctl -g --rfm-reason
-         sudo /opt/CrowdStrike/falconctl -g --rfm-history
+  2. REACH IT WITH RTR, not SSH. From the host's detail page choose **Connect to host** (the
+     same action appears on a detection's Event Actions menu). Before it connects, know what has
+     to be true — this is the part the exam tests:
 
-     The reason should be a missing modules file. Compare `uname -r` against the sensor
-     version and you have the whole story: a kernel the sensor has no module for.
+       - the host is online (an RFM host still is),
+       - it is in a group assigned a **response policy with Real Time Response enabled**,
+       - and you hold a **Real Time Responder** role. The **Falcon Administrator role does not
+         include RTR** — a common real-world surprise. If Connect to host is greyed out or the
+         session fails to authorise, that is almost always the role or the policy, not the host.
 
-  2. Now find it from the console, which is objective 3.5. Host management, filtered to hosts
-     in Reduced Functionality Mode. Confirm falcon-lab-lnx appears, and look at the host
-     detail panel — it should still show as online with a recent Last seen. That gap between
-     "looks fine" and "is fine" is the entire point.
+     First real question to answer for yourself: **does RTR even connect to a host in RFM?**
+     Try it and record what happens. Whether a degraded sensor still accepts an RTR session is
+     part of understanding RFM's impact (objective 3.4), and it is better learned by trying than
+     by being told.
 
-  3. Work out the consequence. The documentation is explicit about one: network containment
-     does **not** work on a Linux host in RFM, though it does on Windows and macOS. A host
-     you believe you could isolate during an incident, and could not.
+  3. RECONNOITRE OVER RTR. If the session connects, run a few read-only commands — `ps` to see
+     `falcon-sensor` running, `ls` and `cat` around `/opt/CrowdStrike` and the sensor logs.
+     Reading the RFM reason and history the way the setup step did means running the falconctl
+     binary, i.e. the RTR **`run`** command — and `run` needs the **RTR Administrator** role AND
+     a response policy with `run` enabled (the default policy has it OFF). Notice that gate:
+     read-only reconnaissance is available widely, but executing a binary on the host is
+     deliberately harder to reach. That is response-policy design (Domain 5), not an accident.
 
-  4. Check your work:
+  4. UNDERSTAND THE CONSEQUENCE. The documentation is explicit about one loss: network
+     containment does **not** work on a Linux host in RFM, though it does on Windows and macOS.
+     A host you believe you could isolate during an incident, and could not.
+
+  5. Check your work:
          lab grade induce-rfm
 
-  5. Put it back when you are done:
+  6. Put it back when you are done:
          ./lab.py revert lnx sensor
 
-  How this state was built, because it is worth knowing and it is not obvious. Simply booting
-  an unsupported kernel is NOT enough on a current sensor: with `--backend=auto` it falls back
-  to eBPF user mode and stays perfectly healthy. Reproducing RFM took both an unsupported
-  kernel (7.0.0-28, against a sensor built for 6.8) AND `falconctl -s --backend=kernel` to
-  stop it taking the user-mode escape route. The first attempt at this exercise assumed the
-  kernel alone would do it, and the sensor came back reporting `rfm-state=false`.
+  Why SSH is only in the background here: this lab keeps an SSH key on the guests so the grader
+  can read ground truth out of band — an answer key, not a method. Production endpoints give you
+  no such thing, so every step you would actually perform on a real RFM host goes through the
+  console and RTR.
+
+  How this state was built, because it is worth knowing and is not obvious. Booting an
+  unsupported kernel is NOT enough on a current sensor: with `--backend=auto` it falls back to
+  eBPF user mode and stays healthy. Reproducing RFM took both an unsupported kernel (7.0.0-28,
+  against a sensor built for 6.8) AND `falconctl -s --backend=kernel` to stop it taking the
+  user-mode escape route. The first attempt assumed the kernel alone would do it, and the sensor
+  came back reporting `rfm-state=false`.
 
 expect:
   console: |
-    Host management filtered to RFM — falcon-lab-lnx present, online, recently seen.
+    Host management filtered to RFM — falcon-lab-lnx present, online, recently seen — and an
+    attempt to Connect to host via RTR, with the outcome (connected / blocked) noted.
   detection: none
 
 verify:
+  # The endpoint checks below are the lab's OUT-OF-BAND ground truth over SSH -- the grader's
+  # answer key, not the method the exercise teaches. What the learner does is console + RTR.
   - kind: endpoint
-    label: sensor is in RFM
+    label: "(ground truth) sensor is in RFM"
     shell: sudo -n /opt/CrowdStrike/falconctl -g --rfm-state 2>&1
     expect_contains: "rfm-state=true"
   - kind: endpoint
-    label: the service is nevertheless running
+    label: "(ground truth) the service is nevertheless running"
     shell: systemctl is-active falcon-sensor
     expect_contains: active
   - kind: attest
-    label: what you found
+    label: what you did in the console
     items:
-      - "I read the RFM reason from falconctl and can state it"
-      - "I found the host using an RFM filter in the console"
+      - "I found the host using the RFM filter in Host management"
       - "The console still showed it online with a recent Last seen"
+      - "I read the RFM reason from the host detail panel and can state it"
+      - "I tried to Connect to host with RTR and can say whether it connected on an RFM host"
+      - "I can name RTR's three gates: online, a response policy with RTR enabled, and an RTR role"
+      - "I know the Falcon Administrator role does not by itself grant RTR"
       - "I can say what network containment does on a Linux host in RFM"
 
 hint: >
-  If the RFM check reports false, the guest is probably on the healthy `sensor` baseline
-  rather than `rfm` — press set up again, or run `./lab.py revert lnx rfm`. Note that the
-  standard `sensor` check used by other scenarios treats RFM as a FAILURE, which is right
-  everywhere except here, where it is the desired state.
+  If the RFM check reports false, the guest is probably on the healthy `sensor` baseline rather
+  than `rfm` — press set up again, or run `./lab.py revert lnx rfm`. If RTR's Connect to host is
+  unavailable, check the role and the response policy before suspecting the host: Falcon
+  Administrator alone does not grant RTR, and the target group needs a response policy with RTR
+  enabled. Note that the standard `sensor` check used by other scenarios treats RFM as a
+  FAILURE, which is right everywhere except here, where it is the desired state.
