@@ -1,0 +1,130 @@
+id: rtr-response-policy
+name: Real Time Response — reach a host from the console and run commands on it
+target: lnx
+baseline: sensor
+mode: guided
+domain: 5
+difficulty: 2
+duration_min: 30
+objective: "5.x — configure response policies and the RTR role tiers; connect to a host and run commands"
+requires: [lab-host-group, sensor-install-lnx]
+
+summary: >
+  Real Time Response is how you run commands on an endpoint you have no shell on — straight
+  from the Falcon console. This exercise takes you through the three things that must line up
+  before RTR works (a policy, a role, an online host), connects you to the healthy Linux guest,
+  and has you actually change its state from the console. The grader then proves, over its own
+  out-of-band channel, that your RTR command really ran on the host.
+
+teaches: |
+  - What RTR is for: response and remediation on a host directly from the console, with no SSH
+    and from any location — you can even connect to a network-contained host
+  - The three gates, all of which are exam material:
+      * the host is online,
+      * it is in a group assigned a RESPONSE POLICY with Real Time Response enabled,
+      * and you hold a Real Time Responder ROLE — the Falcon Administrator role does NOT include
+        RTR, which is the single most common reason "Connect to host" is unavailable
+  - The three RTR role tiers and what each unlocks:
+      * Read Only Analyst — reconnaissance only (ls, cat, ps, netstat, reg query, filehash …)
+      * Active Responder — the above plus get (extract files) and state-changing commands
+        (mkdir, mv, cp, rm, kill, runscript for certain scripts)
+      * Administrator — the above plus put (upload files), run (execute a binary directly),
+        and creating custom scripts
+  - That the response POLICY and the ROLE are two independent gates: the policy says what may be
+    run on the host, the role says what this user may run. The DEFAULT response policy has every
+    setting enabled EXCEPT Custom Scripts and run, so `run` needs both an Administrator role and
+    a policy that turns run on — a deliberate double lock on executing arbitrary binaries
+  - That RTR sessions are audited, and that the session is time-limited (it must be refreshed)
+
+setup:
+  - name: confirm the sensor is healthy and clear any previous proof marker
+    shell: |
+      printf 'svc: %s\n' "$(systemctl is-active falcon-sensor)"
+      printf 'rfm: %s\n' "$(sudo -n /opt/CrowdStrike/falconctl -g --rfm-state 2>&1)"
+      sudo -n rm -rf /tmp/rtr-lab-proof 2>/dev/null || rm -rf /tmp/rtr-lab-proof 2>/dev/null
+      printf 'marker-before: %s\n' "$([ -d /tmp/rtr-lab-proof ] && echo present || echo absent)"
+    expect_contains: "marker-before: absent"
+
+instructions: |
+  The Linux guest is on a clean, healthy sensor baseline — a good contrast with `induce-rfm`,
+  where the same host is degraded. Any leftover proof marker has been cleared.
+
+  1. MAKE SURE RTR CAN RUN ON THIS HOST (the policy gate). Endpoint security > Response
+     policies. Either confirm the policy that applies to the **Falcon Lab** group has **Real
+     Time Response enabled**, or — if the group only inherits the Default response policy —
+     clone the default, assign the clone to Falcon Lab, and leave RTR enabled. While you are in
+     there, read the settings: note that **Custom Scripts** and **run** are OFF in the default
+     policy. Those two are the higher-risk capabilities, gated separately on purpose.
+
+  2. MAKE SURE YOU MAY RUN IT (the role gate). Your user needs a Real Time Responder role.
+     Confirm you hold one — Read Only Analyst, Active Responder, or Administrator. Remember that
+     Falcon Administrator on its own does **not** grant RTR. For this exercise you want at least
+     **Active Responder**, because step 5 changes the host's state.
+
+  3. CONNECT. Host management (or a detection's Event Actions), select falcon-lab-lnx, and choose
+     **Connect to host**. If it is greyed out or fails to authorise, it is almost always the
+     policy or the role from steps 1–2, not the host. The host is online.
+
+  4. RECONNAISSANCE (Read Only tier). In the RTR session, run a few read-only commands to feel
+     what reconnaissance from the console looks like:
+
+         ps                      # is falcon-sensor running?
+         ls /opt/CrowdStrike     # the sensor's files
+         cat /etc/os-release     # what is this box?
+         netstat                 # current connections
+
+     Every one of these is available to the lowest RTR role. None of them changes anything.
+
+  5. CHANGE THE HOST'S STATE (Active Responder tier), and leave proof. Run:
+
+         mkdir /tmp/rtr-lab-proof
+
+     `mkdir` modifies the host, so it needs Active Responder or higher — a Read Only Analyst
+     cannot run it. This single command is the whole point: you just changed a real endpoint
+     from a browser, with no shell and no SSH.
+
+  6. Check your work:
+         lab grade rtr-response-policy
+
+     The grader confirms — over the lab's own out-of-band channel — that /tmp/rtr-lab-proof now
+     exists on the host. If it does, your RTR command genuinely executed there. That is the
+     difference between "the policy was saved" and "a command actually ran on the endpoint."
+
+  7. Optional, to feel the second lock: try `run` (for example attempting to execute a binary).
+     Under the Default response policy it is refused even if you are an Administrator, because
+     the POLICY has run disabled. Enable run on the Falcon Lab response policy, wait for it to
+     apply, and try again. Two independent gates — role and policy — had to agree.
+
+expect:
+  console: |
+    Response policies showing a policy assigned to the Falcon Lab group with RTR enabled, and a
+    Real Time Response session connected to falcon-lab-lnx with the recon and mkdir commands run.
+  detection: none
+
+verify:
+  - kind: console
+    label: a response policy is assigned to the Falcon Lab group
+    path: /policies/response
+    api_match: /api2/
+    expect_contains: "Falcon Lab"
+  - kind: endpoint
+    label: "(functional) an RTR command actually ran — /tmp/rtr-lab-proof exists on the host"
+    shell: "[ -d /tmp/rtr-lab-proof ] && echo present || echo absent"
+    expect_contains: present
+  - kind: attest
+    label: understanding
+    items:
+      - "I confirmed the Falcon Lab group's response policy has Real Time Response enabled"
+      - "I connected to the host with Connect to host — no SSH involved"
+      - "I ran read-only recon commands and one state-changing command (mkdir)"
+      - "I can name RTR's three role tiers and one command unique to each"
+      - "I know Falcon Administrator alone does not grant RTR"
+      - "I can explain why run and Custom Scripts are gated by BOTH the role and the policy"
+
+hint: >
+  If Connect to host is unavailable, work the gates in order: do you hold an RTR role (Falcon
+  Administrator does not count), and does the Falcon Lab group's response policy have RTR
+  enabled? If the console check passes but the functional check says 'absent', the policy is
+  assigned but your mkdir did not run — check you are Active Responder or higher (Read Only
+  cannot mkdir) and that the session was actually connected when you ran it. If mkdir was
+  refused outright, your role is Read Only. Re-grade after the marker is created.
