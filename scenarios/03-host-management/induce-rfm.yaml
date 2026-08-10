@@ -48,11 +48,16 @@ instructions: |
 
   1. FIND IT (objective 3.5). Host setup and management > Manage endpoints > Host management,
      and filter to hosts in Reduced Functionality Mode — under the hood that filter is the FQL
-     `reduced_functionality_mode:'yes'`, the same field for every platform. Confirm
-     falcon-lab-lnx appears. Open its detail panel and note two things that make RFM dangerous:
-     it still shows **online** with a recent **Last seen**, and the panel gives you the RFM
-     status and reason without touching the host at all. The gap between "looks fine" and "is
-     fine" is the whole point.
+     `reduced_functionality_mode:'yes'`, the same field for every platform. To see the RFM state
+     in the table you may need to turn the column on: click the **configure table columns** icon
+     above the table and enable **RFM**. Confirm falcon-lab-lnx appears.
+
+     Now click the **host name** to open its **summary panel** (it slides in from the right).
+     Note what makes RFM dangerous: at the top of the panel the host shows **Online (blue)** —
+     "seen recently" — and in the list its **Last seen** is current. Every naive "is it up?"
+     check passes. The panel tells you the host IS in RFM (status), but it does **not** tell you
+     *why* — the console surfaces the status, not the reason. That gap between "looks fine" and
+     "is fine", and the fact that the reason lives on the host, is exactly why step 2 exists.
 
   2. REACH IT WITH RTR, not SSH. From the host's detail page choose **Connect to host** (the
      same action appears on a detection's Event Actions menu). Before it connects, know what has
@@ -119,9 +124,9 @@ verify:
   - kind: attest
     label: what you did in the console
     items:
-      - "I found the host using the RFM filter in Host management"
-      - "The console still showed it online with a recent Last seen"
-      - "I read the RFM reason from the host detail panel and can state it"
+      - "I found the host using the RFM filter in Host management (RFM column turned on)"
+      - "The summary panel showed it Online (blue) with a recent Last seen"
+      - "I got the RFM reason from the host itself (falconctl via RTR) — the console shows status, not reason"
       - "I tried to Connect to host with RTR and can say whether it connected on an RFM host"
       - "I can name RTR's three gates: online, a response policy with RTR enabled, and an RTR role"
       - "I know the Falcon Administrator role does not by itself grant RTR"
