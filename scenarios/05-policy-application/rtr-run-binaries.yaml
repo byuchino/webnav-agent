@@ -1,0 +1,128 @@
+id: rtr-run-binaries
+name: Run binaries over RTR — the double-locked capability (Windows)
+target: win
+baseline: sensor
+mode: guided
+domain: 5
+difficulty: 3
+duration_min: 30
+objective: "5.x — enable and use the highest-risk RTR capabilities (run, put) via response policy + RTR Administrator"
+requires: [lab-host-group, sensor-install-win, rtr-response-policy-win]
+
+summary: >
+  Executing an arbitrary binary on an endpoint from the console is the most powerful — and most
+  dangerous — thing RTR can do, so it is locked twice: it needs the RTR ADMINISTRATOR role AND a
+  response policy with `run` turned on, and both are off by default. This exercise opens both
+  locks on the Windows host and actually runs a binary, with the grader proving out of band that
+  it executed. It also makes an important platform point concrete: `run` and `put` are
+  Windows/Mac only — Linux has neither.
+
+teaches: |
+  - That `run` (execute a binary directly) and `put` (upload a file) are the top RTR tier, and
+    are **Windows and Mac only** — confirmed by the Linux command set, which has no run or put
+  - The DOUBLE LOCK on executing binaries, and that BOTH gates are independent:
+      * the ROLE gate — you need **RTR Administrator** (Active Responder is not enough); the role
+        is global to your user, the same on every host and OS
+      * the POLICY gate — the response policy covering the host's group must have **run** enabled
+        (and **put** / **Custom Scripts** for those); all are OFF in the Default response policy
+  - That neither gate is per-session: once the role is granted and the policy is set, the
+    capability is there for every RTR session to a covered host — you do not re-enable it per
+    connection
+  - That RTR runs as SYSTEM on Windows, so a binary you `run` executes with full privilege
+  - The Linux contrast: no `run`/`put` there at all — you execute code with **`runscript`**
+    (Custom Scripts), a separate policy setting; see rtr-response-policy-lnx
+
+setup:
+  - name: confirm the sensor is healthy and clear any previous proof marker
+    shell: |
+      $s = Get-Service CSFalconService -ErrorAction SilentlyContinue
+      if (-not $s -or $s.Status -ne 'Running') { Write-Output 'SENSOR NOT RUNNING'; exit 1 }
+      Remove-Item 'C:\rtr-run-proof' -Recurse -Force -ErrorAction SilentlyContinue
+      if (Test-Path 'C:\rtr-run-proof') { Write-Output 'marker-before: present' }
+      else { Write-Output 'marker-before: absent' }
+    expect_contains: "marker-before: absent"
+
+instructions: |
+  The Windows guest is on a clean, healthy sensor baseline; any leftover proof marker is cleared.
+  You should already be comfortable connecting via RTR (rtr-response-policy-win). This exercise is
+  about the two locks on the `run` command specifically.
+
+  1. SEE IT LOCKED FIRST. Connect to FALCON-LAB-WIN over RTR (row ⋮ menu; close the summary panel
+     if it overlaps). In the session, ask for help on run so you can see the syntax:
+
+         help run
+
+     Then try to run a binary before the policy allows it:
+
+         run "C:\Windows\System32\cmd.exe" -CommandLine="/c mkdir C:\rtr-run-proof"
+
+     Under the Default response policy this is refused — even if you are an RTR Administrator —
+     because the POLICY has run disabled. That refusal is the policy lock. (If instead you are
+     told you lack permission for run, that is the ROLE lock: you are not an Administrator.)
+
+  2. OPEN THE POLICY LOCK. Endpoint security > Response policies. On the policy assigned to the
+     **Falcon Lab** group, enable **run** (and, if you want to try uploads, **put**; for scripts,
+     **Custom Scripts**). Save, and enable the policy. Wait for the host to receive it — the
+     host's detail panel shows when the policy was applied; "Changes pending" means not yet.
+
+  3. OPEN THE ROLE LOCK, if it was not already. `run` needs **RTR Administrator**, not merely
+     Active Responder. Confirm your user holds it. Remember the role is global — granting it once
+     covers every host and OS; you are not enabling anything Windows-specific here.
+
+  4. NOW RUN THE BINARY. Reconnect if your session dropped, and run:
+
+         run "C:\Windows\System32\cmd.exe" -CommandLine="/c mkdir C:\rtr-run-proof"
+
+     This executes cmd.exe — a real binary — on the endpoint, as SYSTEM, from your browser. For a
+     vivid sense of the privilege, also try:
+
+         run "C:\Windows\System32\whoami.exe"
+
+     and note it returns `nt authority\system`.
+
+  5. Check your work:
+         lab grade rtr-run-binaries
+
+     The grader confirms — over the lab's out-of-band channel — that C:\rtr-run-proof now exists.
+     Because that directory could only be created once BOTH locks were open, its existence proves
+     the whole capability end to end.
+
+  6. THE PLATFORM POINT. There is no `run` or `put` on Linux — its RTR command set simply does
+     not include them (cat, cp, get, kill, ls, mkdir, mv, ps, rm, runscript, ...). To execute
+     code on a Linux host you use **runscript** (Custom Scripts), gated by the Custom Scripts
+     policy setting plus RTR Administrator. So the ROLE and the idea of a policy gate carry across
+     OSes, but the specific command does not: "run a binary" is a Windows/Mac capability.
+
+expect:
+  console: |
+    Response policies — the Falcon Lab policy with run (and optionally put / Custom Scripts)
+    enabled and applied to the host — and an RTR session that ran cmd.exe and whoami.exe.
+  detection: none
+
+verify:
+  - kind: console
+    label: a response policy is assigned to the Falcon Lab group
+    path: /policies/response
+    api_match: /api2/
+    expect_contains: "Falcon Lab"
+  - kind: endpoint
+    label: "(functional) run executed a binary — C:\\rtr-run-proof was created on the host"
+    shell: "if (Test-Path 'C:\\rtr-run-proof') { 'present' } else { 'absent' }"
+    expect_contains: present
+  - kind: attest
+    label: understanding
+    items:
+      - "I saw run refused before the policy allowed it (the policy lock)"
+      - "I enabled run on the Falcon Lab response policy and waited for it to apply"
+      - "I confirmed I hold RTR Administrator (Active Responder is not enough for run)"
+      - "I ran a real binary (cmd.exe / whoami.exe) and saw it execute as SYSTEM"
+      - "I can explain the double lock: role AND policy, both independent, neither per-session"
+      - "I know run and put are Windows/Mac only, and Linux uses runscript instead"
+
+hint: >
+  If run is refused, identify which lock: a permission/role message means you are not an RTR
+  Administrator; a policy/not-permitted message means run is not enabled on the applicable
+  response policy (or has not propagated yet — check the host's applied-policy state). If the
+  console check passes but the functional check says 'absent', the policy is assigned but the
+  binary did not execute — most often run is still disabled, the policy has not landed, or you
+  ran it in a session that predates the change. Re-grade after C:\rtr-run-proof is created.

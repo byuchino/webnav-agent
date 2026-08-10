@@ -94,10 +94,12 @@ instructions: |
      exists on the host. If it does, your RTR command genuinely executed there. That is the
      difference between "the policy was saved" and "a command actually ran on the endpoint."
 
-  7. Optional, to feel the second lock: try `run` (for example attempting to execute a binary).
-     Under the Default response policy it is refused even if you are an Administrator, because
-     the POLICY has run disabled. Enable run on the Falcon Lab response policy, wait for it to
-     apply, and try again. Two independent gates — role and policy — had to agree.
+  7. Optional, to feel the second lock: note that **Linux RTR has no `run` and no `put`** — those
+     are Windows/Mac only. On Linux you execute code with **`runscript`** (Custom Scripts), which
+     the Default response policy has DISABLED, and which also needs RTR Administrator. Try
+     `runscript` before enabling it and it is refused; enable Custom Scripts on the Falcon Lab
+     response policy, wait for it to apply, and try again. Two independent gates — role and
+     policy — had to agree. To actually run a *binary* over RTR, see rtr-run-binaries (Windows).
 
 expect:
   console: |
