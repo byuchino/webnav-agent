@@ -41,9 +41,10 @@ instructions: |
      a known-malicious file is merely detected or actively blocked. Read them; do not change
      anything yet.
 
-  3. **First, with prevention OFF for that setting**, drop the EICAR file:
-
-         ./lab.py run eicar-win --no-revert
+  3. **First, with prevention OFF for that setting**, drop the EICAR file. In the control panel,
+     tick **keep state** on the eicar-win card and press **set up** — "keep state" matters here
+     because a normal set up would revert the Windows host and wipe the policy state you are
+     testing. (With shell access the same is `./lab.py run eicar-win --no-revert`.)
 
      Confirm in Endpoint detections that a detection appeared, and confirm on disk that the
      file survived. Detected, not blocked.
@@ -55,7 +56,7 @@ instructions: |
 
   5. Repeat step 3. The file should now be quarantined rather than left in place.
 
-  6. Check your work:
+  6. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade prevention-detect-vs-block
 
   If step 5 behaves exactly like step 3, do not assume the exercise is broken. Check, in

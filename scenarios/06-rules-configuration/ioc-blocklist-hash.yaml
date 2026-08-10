@@ -55,7 +55,7 @@ instructions: |
      A different hash, so the indicator no longer applies. That is why hash IOCs handle known
      artifacts and behavioural rules handle everything else.
 
-  5. Check your work:
+  5. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade ioc-blocklist-hash
 
 expect:

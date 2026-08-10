@@ -35,7 +35,7 @@ instructions: |
      management. Assign it to a test user, or to yourself as a second role if you have no
      spare account.
 
-  4. Check your work:
+  4. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade roles-least-privilege
 
   Worth noticing: the documentation is explicit that Falcon Administrator and Endpoint

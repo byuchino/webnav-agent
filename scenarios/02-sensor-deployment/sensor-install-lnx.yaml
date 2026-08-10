@@ -33,7 +33,7 @@ instructions: |
          sudo /opt/CrowdStrike/falconctl -s --cid=<your-cid-with-checksum>
          sudo systemctl start falcon-sensor
 
-  4. Check your work:
+  4. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade sensor-install-lnx
 
   Worth doing deliberately:

@@ -83,7 +83,7 @@ instructions: |
      SYSTEM, this lands at the drive root. You just changed a real Windows endpoint from a
      browser, with no RDP and no SSH.
 
-  6. Check your work:
+  6. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade rtr-response-policy-win
 
      The grader confirms — over the lab's own out-of-band channel — that C:\rtr-lab-proof now

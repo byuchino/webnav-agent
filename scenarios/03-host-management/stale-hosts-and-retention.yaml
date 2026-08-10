@@ -56,7 +56,7 @@ instructions: |
      honest answer is not a number to memorise — it is whatever the applicable retention
      policy says, and knowing where that is configured is the durable version of the answer.
 
-  6. Check your work:
+  6. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade stale-hosts-retention
 
 expect:

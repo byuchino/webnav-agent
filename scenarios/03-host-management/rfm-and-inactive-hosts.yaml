@@ -42,7 +42,7 @@ instructions: |
      is exactly the sort of detail that breaks a naive string comparison. This lab's own
      grader had that bug and reported a healthy sensor as being in RFM.
 
-  4. Check your work:
+  4. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade rfm-and-inactive-hosts
 
 expect:

@@ -44,7 +44,7 @@ instructions: |
   3. Give it precedence over whatever was upgrading these hosts, and confirm on each host's
      detail panel which update policy it is now receiving.
 
-  4. Check your work:
+  4. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade sensor-update-pinning
 
   Then note the honest limitation: the host is already on 7.40, and a policy will not

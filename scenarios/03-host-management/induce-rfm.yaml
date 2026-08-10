@@ -114,10 +114,10 @@ instructions: |
      containment does **not** work on a Linux host in RFM, though it does on Windows and macOS.
      A host you believe you could isolate during an incident, and could not.
 
-  5. Check your work:
+  5. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade induce-rfm
 
-  6. Put it back when you are done:
+  6. Put it back when you are done — press **revert to sensor** on the lnx row in the control panel, or with shell access run:
          ./lab.py revert lnx sensor
 
   Why SSH is only in the background here: this lab keeps an SSH key on the guests so the grader
@@ -162,7 +162,7 @@ verify:
 
 hint: >
   If the RFM check reports false, the guest is probably on the healthy `sensor` baseline rather
-  than `rfm` — press set up again, or run `./lab.py revert lnx rfm`. If RTR's Connect to host is
+  than `rfm` — press set up again, or the **revert to rfm** button on the lnx row (`./lab.py revert lnx rfm` with shell access). If RTR's Connect to host is
   unavailable, check the role and the response policy before suspecting the host: Falcon
   Administrator alone does not grant RTR, and the target group needs a response policy with RTR
   enabled. Note that the standard `sensor` check used by other scenarios treats RFM as a

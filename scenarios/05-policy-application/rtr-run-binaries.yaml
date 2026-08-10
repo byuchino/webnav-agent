@@ -80,7 +80,7 @@ instructions: |
 
      and note it returns `nt authority\system`.
 
-  5. Check your work:
+  5. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade rtr-run-binaries
 
      The grader confirms — over the lab's out-of-band channel — that C:\rtr-run-proof now exists.

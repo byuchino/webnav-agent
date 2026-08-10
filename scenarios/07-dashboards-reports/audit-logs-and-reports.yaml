@@ -37,7 +37,7 @@ instructions: |
        - which hosts are running which sensor version
        - which hosts have not reported recently
 
-  4. Check your work:
+  4. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade audit-logs-and-reports
 
   Objective 5.3 also lives here: RTR activity is auditable, and being able to say where that

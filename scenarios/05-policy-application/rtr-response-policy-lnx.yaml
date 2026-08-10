@@ -87,9 +87,8 @@ instructions: |
      cannot run it. This single command is the whole point: you just changed a real endpoint
      from a browser, with no shell and no SSH.
 
-  6. Check your work:
-         lab grade rtr-response-policy
-
+  6. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
+         lab grade rtr-response-policy-lnx
      The grader confirms — over the lab's own out-of-band channel — that /tmp/rtr-lab-proof now
      exists on the host. If it does, your RTR command genuinely executed there. That is the
      difference between "the policy was saved" and "a command actually ran on the endpoint."

@@ -32,7 +32,7 @@ instructions: |
      (ssh -i ~/.ssh/falcon_lab_ed25519 labadmin@10.77.0.10):
          & 'C:\lab\WindowsSensor.exe' /install /quiet /norestart CID=<your-cid-with-checksum>
 
-  4. Wait a minute, then check your work:
+  4. Wait a minute, then check your work — press **grade** on the card in the control panel, or with shell access run:
          lab grade sensor-install-win
 
   Things worth trying on purpose, because they teach more than a clean run:

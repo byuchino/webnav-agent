@@ -174,6 +174,8 @@ PAGE = r"""
   button:disabled{opacity:.45;cursor:default}
   button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   button.primary:hover:not(:disabled){color:#fff;opacity:.9}
+  label.skip{font-size:12px;color:var(--dim);display:inline-flex;align-items:center;gap:3px;
+    margin-right:4px;cursor:pointer;user-select:none}
   h2{font-size:12px;margin:24px 0 8px;text-transform:uppercase;letter-spacing:.09em;
      color:var(--dim);font-weight:650}
   .name{font-weight:600}
@@ -254,6 +256,7 @@ async function loadScen(){
         <span class="pill">${esc(s.target)}</span>
         ${s.objective?`<span class="meta">${esc(s.objective)}</span>`:''}
         <span class="spacer"></span>
+        ${(s.baseline && s.baseline!=='none') ? `<label class="skip" title="Do NOT revert the guest first — keep its current state. Use this when an earlier step configured the host and reverting would undo it."><input type="checkbox" class="norevert"> keep state</label>` : ''}
         <button class="primary" onclick="run('${s.id}',this)">
           ${s.mode==='auto'?'run':'set up'}</button>
         <button onclick="grade('${s.id}',this)">grade</button>
@@ -325,7 +328,9 @@ async function follow(jid, id, btn, label){
 
 async function run(id, btn){
   const card = btn.closest('.card');
-  const destructive = card && card.dataset.baseline && card.dataset.baseline !== 'none';
+  const cb = card && card.querySelector('.norevert');
+  const skip = !!(cb && cb.checked);
+  const destructive = card && card.dataset.baseline && card.dataset.baseline !== 'none' && !skip;
   if(destructive && !confirm(
       `This reverts ${card.dataset.target} to the "${card.dataset.baseline}" baseline first.\n\n`
       + `Anything currently on that guest is discarded — including an installed sensor if the `
@@ -335,7 +340,7 @@ async function run(id, btn){
   const poll = setInterval(loadHosts, 8000);
   let r;
   try{
-    const start = await (await fetch(`/api/run/${id}`, {method:'POST'})).json();
+    const start = await (await fetch(`/api/run/${id}${skip?'?no_revert=true':''}`, {method:'POST'})).json();
     r = start.error ? start : await follow(start.job, id, btn, 'working');
   } catch(e){ r = {error:`could not start: ${e.message}`}; }
   finally { clearInterval(poll); btn.disabled=false; btn.textContent=t; loadHosts(); }

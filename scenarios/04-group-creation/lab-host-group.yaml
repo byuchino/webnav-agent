@@ -36,7 +36,7 @@ instructions: |
      Note that it may say "No Policy" briefly — a host that was recently installed, or whose
      policy the cloud has not yet evaluated, shows that.
 
-  4. Check your work:
+  4. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade lab-host-group
 
   Best practice worth internalising: groups are how you stage a change. Apply a new policy to
