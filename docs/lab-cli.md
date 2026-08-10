@@ -36,6 +36,30 @@ rfm-state=true.
 rfm-reason=Modules file was not found, code=0xC0000034.
 ```
 
+**Why there is no Windows RFM baseline.** RFM applies on Windows too, but it could not be
+induced here the way Linux was, and the investigation is worth recording so it is not repeated:
+
+- The only cause the harvested docs document is an **unsupported OS build** (Windows Insider /
+  beta), which is not practical to stage in the lab.
+- **Stopping a CrowdStrike component does not work** and would not be RFM anyway. Even as an
+  administrator, `sc stop CSFalconService` returns `Access is denied` and the kernel drivers
+  (`csagent`, `CSDeviceControl`, `CSFirmwareAnalysis`) return `1052 — control not valid`: that
+  is sensor tamper protection. A stopped sensor is *not running*, a different state from RFM,
+  which is a sensor that **is** running and reporting in while collecting almost nothing.
+- The four OS services the sensor requires (BFE, NSI, LMHosts, Power) are **communication /
+  functionality prerequisites, not RFM triggers**. Of the four, only `lmhosts` can be stopped
+  in isolation — `nsi` cascades into DHCP/DNS (it would drop the ssh session), `BFE` cascades
+  into the Windows Firewall stack, and `Power` cannot be stopped at all. Stopping `lmhosts` was
+  tested: the sensor kept running, forced nothing back on, and logged no RFM/degraded event.
+  Stopping these degrades connectivity (host shows **offline / stale**), which is a separate
+  teaching topic from RFM.
+
+The short version: on both platforms RFM is a **kernel-driver-load-time** state, which is why
+Linux needed a kernel/module mismatch to reach it and why stopping a user-space dependency on
+Windows does not. There is also no local Windows RFM read — unlike `falconctl -g --rfm-state`,
+`CSSensorSettings.exe` exposes only proxy/tags/rtr, so Windows RFM is confirmed from the console
+(Host Management's RFM column) or the ZTA signal.
+
 The runner reverts to the declared baseline before doing anything, so an exercise cannot
 silently begin from the wrong state — a sensor-install lesson that started on a host which
 already had one would be quietly pointless. Ask for a baseline that does not exist and it

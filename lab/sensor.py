@@ -41,7 +41,12 @@ def _verify_windows(name):
         "aid": d.get("aid") or None,
         "cid": d.get("cid") or None,
         "version": d.get("ver") or None,
-        "rfm": None,          # not applicable on Windows
+        # RFM absolutely DOES apply on Windows -- there is just no local way to read it. Unlike
+        # Linux's `falconctl -g --rfm-state`, CSSensorSettings.exe exposes only proxy/tags/rtr,
+        # and the sensor logs nothing to the event log on entering it. Windows RFM is read from
+        # the console (Host Management RFM column) or the ZTA signal, so a local check reports
+        # None rather than pretending the state does not exist.
+        "rfm": None,
     }
 
 
