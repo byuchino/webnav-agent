@@ -36,6 +36,10 @@ from observe import NetworkRecorder  # noqa: E402
 
 CONSOLE = os.environ.get("FALCON_CONSOLE", "https://falcon.us-2.crowdstrike.com")
 
+# The console's own API prefix. Discovered by capturing traffic, not guessed: the first
+# version of this used "/api/" and every check silently captured zero bodies.
+API_PREFIX = os.environ.get("FALCON_API_PREFIX", "/api2/")
+
 
 class ConsoleUnavailable(RuntimeError):
     """No usable console session. Distinct from a failed assertion on purpose."""
@@ -62,7 +66,7 @@ async def _read(path, api_match, settle=14, max_wait=40):
             while waited < max_wait:
                 await asyncio.sleep(2)
                 waited += 2
-                await net.fetch_bodies(c, match=api_match or "/api/", limit=60)
+                await net.fetch_bodies(c, match=api_match or API_PREFIX, limit=60)
                 now = len(net.bodies(match=api_match, min_len=2))
                 stable = stable + 1 if now == seen else 0
                 seen = now
@@ -84,7 +88,7 @@ def read(path, api_match, settle=14):
     return asyncio.run(_read(path, api_match, settle))
 
 
-def check(path, api_match, expect_contains=None, expect_absent=None, settle=14):
+def check(path, api_match=None, expect_contains=None, expect_absent=None, settle=14):
     """Assert on what the console's own API returned.
 
     Deliberately substring matching rather than a JSON path language: the console's internal
@@ -128,7 +132,7 @@ def check(path, api_match, expect_contains=None, expect_absent=None, settle=14):
 def available():
     """Is there a usable console session right now?"""
     try:
-        r = check("/", "/api/", settle=6)
+        r = check("/host-management/hosts", API_PREFIX, settle=8)
         return r["ok"] is not None or "expired" not in (r.get("reason") or "")
     except Exception:  # noqa: BLE001
         return False

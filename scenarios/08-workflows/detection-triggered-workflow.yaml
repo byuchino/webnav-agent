@@ -62,10 +62,6 @@ expect:
   detection: The EICAR detection that triggered it, on falcon-lab-win
 
 verify:
-  - kind: console
-    label: workflow page returns data
-    path: /workflows
-    api_match: /api/
   - kind: endpoint
     label: the triggering detection was caused
     shell: |
@@ -76,6 +72,11 @@ verify:
       - "My workflow is scoped to the Falcon Lab group, not the whole tenant"
       - "Its execution history shows a run caused by my EICAR detection"
       - "I disabled it afterwards"
+
+note: >
+  No Fusion/workflow route appears in this tenant's console sitemap, so there is no
+  console check here. If your tenant has workflow automation, add a `console` check
+  pointing at its path — `lab/falcon.py` will read the API response the page fetches.
 
 hint: >
   The endpoint check passes either way — both outcomes mean the detection happened, which is

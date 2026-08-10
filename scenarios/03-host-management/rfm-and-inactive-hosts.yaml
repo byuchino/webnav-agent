@@ -55,8 +55,8 @@ verify:
     target: lnx
   - kind: console
     label: host management shows the lab hosts
-    path: /host-management
-    api_match: /api/
+    path: /host-management/hosts
+    api_match: /api2/
     expect_contains: "falcon-lab"
   - kind: attest
     label: filtering and retention

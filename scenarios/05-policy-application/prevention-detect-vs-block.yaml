@@ -75,8 +75,8 @@ expect:
 verify:
   - kind: console
     label: a policy is assigned to the Falcon Lab group
-    path: /prevention-policies
-    api_match: /api/
+    path: /policies/prevention
+    api_match: /api2/
     expect_contains: "Falcon Lab"
   - kind: endpoint
     label: eicar file was blocked on disk

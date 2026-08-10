@@ -141,6 +141,28 @@ precedence, group assignment and propagation delay actually live. A console chec
 setting was saved; an endpoint check says the behaviour changed. The policy exercise requires
 both, and when the console passes while the endpoint fails, that combination *is* the lesson.
 
+Console paths and the API prefix were **discovered, not guessed**. The first version used
+`/api/` and plausible-looking paths like `/host-groups`; six of seven returned "Error |
+CrowdStrike" and the one that loaded captured zero bodies. The console publishes its own route
+manifest at `/content/sitemap-v2/index.json` — 552 routes — and its API lives under `/api2/`.
+Real paths for this tenant:
+
+| Domain | Path |
+|---|---|
+| Host groups | `/host-management/host-groups` |
+| Hosts | `/host-management/hosts` |
+| Prevention policies | `/policies/prevention` |
+| Sensor update policies | `/policies/sensor-update` |
+| Custom IOCs | `/iocs` |
+| Roles | `/users-v2/roles-and-permissions` |
+| Audit logs | `/audit-log/falcon-console/`, `/audit-log/api`, `/audit-log/prevention-policy` |
+| API clients | `/api-clients-and-keys` |
+| Quarantined files | `/activity/quarantined-files` |
+| ML exclusions | `/configuration-v2/exclusions/machine-learning` |
+
+If a check reports "no API response matching", read the sitemap for your own tenant before
+adjusting anything else — routes differ by subscription.
+
 Console checks read the API response the console itself received — not the DOM. Substring
 matching rather than a JSON path language, deliberately: the console's internal API is
 undocumented and unversioned, so its response *shape* is the least stable thing about it,

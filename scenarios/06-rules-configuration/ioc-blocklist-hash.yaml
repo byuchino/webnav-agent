@@ -65,8 +65,8 @@ expect:
 verify:
   - kind: console
     label: a custom IOC exists
-    path: /ioc-management
-    api_match: /api/
+    path: /iocs
+    api_match: /api2/
   - kind: endpoint
     label: the marker file exists to be matched
     shell: |

@@ -51,8 +51,8 @@ expect:
 verify:
   - kind: console
     label: audit log page returns data
-    path: /audit-logs
-    api_match: /api/
+    path: /audit-log/falcon-console/
+    api_match: /api2/
   - kind: attest
     label: locating the records
     items:

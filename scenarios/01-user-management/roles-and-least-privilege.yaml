@@ -50,8 +50,8 @@ expect:
 verify:
   - kind: console
     label: users and roles page reachable
-    path: /users-and-roles
-    api_match: /api/
+    path: /users-v2/roles-and-permissions
+    api_match: /api2/
   - kind: attest
     label: role reasoning
     items:

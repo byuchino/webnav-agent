@@ -50,8 +50,8 @@ expect:
 verify:
   - kind: console
     label: Falcon Lab group exists
-    path: /host-groups
-    api_match: /api/
+    path: /host-management/host-groups
+    api_match: /api2/
     expect_contains: "Falcon Lab"
   - kind: attest
     label: understanding
