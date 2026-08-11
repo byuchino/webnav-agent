@@ -50,11 +50,17 @@ instructions: |
   where the same host is degraded. Any leftover proof marker has been cleared.
 
   1. MAKE SURE RTR CAN RUN ON THIS HOST (the policy gate). Endpoint security > Response
-     policies. Either confirm the policy that applies to the **Falcon Lab** group has **Real
-     Time Response enabled**, or — if the group only inherits the Default response policy —
-     clone the default, assign the clone to Falcon Lab, and leave RTR enabled. While you are in
-     there, read the settings: note that **Custom Scripts** and **run** are OFF in the default
-     policy. Those two are the higher-risk capabilities, gated separately on purpose.
+     policies, on the **Linux** platform tab — response policies are per-platform. Either confirm
+     the policy that applies to the **Falcon Lab** group has **Real Time Response enabled**, or
+     make your own: open the **Default Linux response policy** to its details page and click
+     **Duplicate** (the Duplicate action is on the policy's details page, NOT on the all-policies
+     list). A duplicate does NOT inherit host-group assignments, so afterwards assign **Falcon
+     Lab** to it, leave RTR enabled, and enable the policy. This is a Linux policy, so it governs
+     only falcon-lab-lnx even though Falcon Lab also contains a Windows host — assigning the mixed
+     group is fine, because policies self-filter by platform. While you are in there, read the
+     settings: **Custom Scripts** (which gates `runscript`) is OFF in the default policy — the
+     higher-risk capability, gated separately. Note there is no `run`/`put` setting here: those
+     commands do not exist on Linux (they are Windows/Mac only — see rtr-run-binaries).
 
   2. MAKE SURE YOU MAY RUN IT (the role gate). Your user needs a Real Time Responder role.
      Confirm you hold one — Read Only Analyst, Active Responder, or Administrator. Remember that

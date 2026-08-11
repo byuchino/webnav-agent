@@ -46,10 +46,20 @@ instructions: |
   different OS and to use the Windows-only commands.
 
   1. MAKE SURE RTR CAN RUN ON THIS HOST (the policy gate). Endpoint security > Response
-     policies. Confirm the policy applied to the **Falcon Lab** group has **Real Time Response
-     enabled**, or clone the Default response policy, assign the clone to Falcon Lab, and keep
-     RTR enabled. Note that **Custom Scripts** and **run** are OFF in the default policy — the
-     two higher-risk capabilities, gated separately on purpose.
+     policies, on the **Windows** platform tab — response policies are per-platform. Confirm the
+     policy applied to the **Falcon Lab** group has **Real Time Response enabled**, or make your
+     own: open the **Default Windows response policy** to its details page and click **Duplicate**
+     (the Duplicate action is on the policy's details page, NOT on the all-policies list). A
+     duplicate does NOT inherit host-group assignments, so afterwards assign **Falcon Lab** to it,
+     keep RTR enabled, and enable the policy.
+
+     The Falcon Lab group holds both a Windows and a Linux host, but this is a WINDOWS response
+     policy, so it governs only FALCON-LAB-WIN — the Linux host is untouched by it, because
+     policies self-filter by platform. Assigning the mixed group is fine; you do not need
+     OS-specific groups. (To give the Linux host RTR settings too, assign Falcon Lab to the Linux
+     response policy as well — same group, separate per-platform policy.) Note that **Custom
+     Scripts** and **run** are OFF in the default policy — the two higher-risk capabilities, gated
+     separately on purpose.
 
   2. MAKE SURE YOU MAY RUN IT (the role gate). You need a Real Time Responder role — Read Only
      Analyst, Active Responder, or Administrator. Falcon Administrator on its own does **not**

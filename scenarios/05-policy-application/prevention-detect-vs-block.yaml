@@ -33,9 +33,13 @@ setup:
 instructions: |
   The Windows host is back at a clean sensor baseline with no EICAR file present.
 
-  1. Endpoint security > Prevention policies. Find the policy that applies to the
-     **Falcon Lab** group. If the group has no dedicated policy, clone the default one and
-     assign the clone to Falcon Lab — never edit the default while learning.
+  1. Endpoint security > Prevention policies, on the **Windows** platform tab (policies are
+     per-platform). Find the policy that applies to the **Falcon Lab** group. If the group has no
+     dedicated policy, **duplicate** the default one (the **Duplicate** action is on the policy's
+     details page, NOT the all-policies list; a duplicate does not inherit host-group
+     assignments) and assign the duplicate to Falcon Lab — never edit the default while learning.
+     The mixed Falcon Lab group is fine here: a Windows prevention policy governs only the Windows
+     host.
 
   2. Note its current state. Somewhere in that policy there are settings that decide whether
      a known-malicious file is merely detected or actively blocked. Read them; do not change
