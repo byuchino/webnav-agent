@@ -393,7 +393,7 @@ def quarantined_file(hostname, name_contains=None):
             filter=f"hostname:'{hostname}'", limit=200)
         if q.get("status_code") != 200:
             return {"ok": None, "reason": f"quarantine read failed (HTTP {q.get('status_code')}) "
-                    f"-- check the key's Quarantine read scope"}
+                    f"-- check the key's Quarantined Files read scope"}
         ids = (q.get("body") or {}).get("resources") or []
         if not ids:
             return {"ok": False, "reason": f"no quarantined files on {hostname} "

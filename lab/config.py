@@ -99,8 +99,8 @@ def ccid():
 #   chmod 600 ~/.falcon-lab/api.json
 # The client needs only READ scopes: Host Groups, Hosts, the policy types you grade (Response,
 # Prevention, Sensor update), Custom IOA Rules and Alerts (custom-IOA exercise), Machine
-# Learning Exclusions (ml-exclusion exercise), and Quarantine (quarantined-files exercise).
-# All read-only; it cannot change anything.
+# Learning Exclusions (ml-exclusion exercise), and Quarantined Files (quarantined-files
+# exercise). All read-only; it cannot change anything.
 API_CREDS_FILE = pathlib.Path(os.environ.get(
     "LAB_API_CREDS_FILE", pathlib.Path.home() / ".falcon-lab" / "api.json"))
 FALCON_CLOUD = os.environ.get("FALCON_CLOUD", "us-2")
