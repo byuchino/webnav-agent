@@ -268,6 +268,11 @@ def _check_api(s, v):
         if not path:
             return {"ok": None, "reason": "api ml_exclusion check needs 'path_contains'"}
         return falcon.ml_exclusion_exists(path, v.get("group"))
+    if assertion == "quarantined_file":
+        hn = v.get("hostname")
+        if not hn:
+            return {"ok": None, "reason": "api quarantined_file check needs 'hostname'"}
+        return falcon.quarantined_file(hn, v.get("name_contains"))
     return {"ok": None, "reason": f"unknown api assert {assertion!r}"}
 
 

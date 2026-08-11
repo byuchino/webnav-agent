@@ -164,7 +164,8 @@ def _clients():
     cid, sec, cloud = creds
     try:
         from falconpy import (OAuth2, HostGroup, ResponsePolicies, PreventionPolicy,
-                              SensorUpdatePolicy, Hosts, CustomIOA, Alerts, MLExclusions)
+                              SensorUpdatePolicy, Hosts, CustomIOA, Alerts, MLExclusions,
+                              Quarantine)
     except ImportError:
         _API["c"] = None
         _API["why"] = "falconpy is not installed (pip install crowdstrike-falconpy)"
@@ -176,6 +177,7 @@ def _clients():
                      "custom_ioa": CustomIOA(auth_object=auth),
                      "alerts": Alerts(auth_object=auth),
                      "ml_exclusions": MLExclusions(auth_object=auth),
+                     "quarantine": Quarantine(auth_object=auth),
                      "response": ResponsePolicies(auth_object=auth),
                      "prevention": PreventionPolicy(auth_object=auth),
                      "sensor_update": SensorUpdatePolicy(auth_object=auth)}
@@ -371,5 +373,39 @@ def ml_exclusion_exists(path_contains, group_name=None):
             return {"ok": False, "reason": f"an ML exclusion matching {path_contains!r} exists but "
                     f"is not applied to {group_name!r} (nor globally)"}
         return {"ok": False, "reason": f"no ML exclusion whose path contains {path_contains!r}"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
+def quarantined_file(hostname, name_contains=None):
+    """Is there a quarantined file on `hostname` (optionally whose record contains
+    `name_contains`, e.g. 'eicar')? (Quarantine read scope.)
+
+    A real functional check: EICAR is genuinely quarantined when the prevention policy's
+    Quarantine setting is on, so this proves the file reached the quarantine store.
+    """
+    import json as _json
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        q = clients["quarantine"].query_quarantine_files(
+            filter=f"hostname:'{hostname}'", limit=200)
+        if q.get("status_code") != 200:
+            return {"ok": None, "reason": f"quarantine read failed (HTTP {q.get('status_code')}) "
+                    f"-- check the key's Quarantine read scope"}
+        ids = (q.get("body") or {}).get("resources") or []
+        if not ids:
+            return {"ok": False, "reason": f"no quarantined files on {hostname} "
+                    f"(is the prevention policy's Quarantine setting on and applied?)"}
+        if not name_contains:
+            return {"ok": True, "reason": f"{len(ids)} quarantined file(s) on {hostname}"}
+        d = clients["quarantine"].get_quarantine_files(ids=ids)
+        for f in (d.get("body") or {}).get("resources") or []:
+            if name_contains.lower() in _json.dumps(f).lower():
+                return {"ok": True, "reason": f"a quarantined file matching {name_contains!r} on "
+                        f"{hostname} (state: {f.get('state') or 'quarantined'})"}
+        return {"ok": False, "reason": f"{len(ids)} quarantined file(s) on {hostname}, but none "
+                f"match {name_contains!r} -- has EICAR been dropped and quarantined yet?"}
     except Exception as e:  # noqa: BLE001
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}

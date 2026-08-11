@@ -1,0 +1,94 @@
+id: quarantined-files
+name: Quarantined files — produce one, review it, and know the actions
+target: win
+baseline: sensor
+mode: guided
+domain: 5
+difficulty: 2
+duration_min: 25
+objective: "manage quarantined files: what quarantine is, how to review, and release/undo/delete"
+requires: [lab-host-group, eicar-win, prevention-detect-vs-block]
+
+summary: >
+  When Falcon quarantines a malicious file it goes to a managed store you triage and act on. You
+  produce a real but SAFE quarantined file with EICAR, find it in the console, and learn the
+  actions the exam asks about — release, undo release, delete. The grader confirms via the API
+  that the file actually reached quarantine.
+
+teaches: |
+  - What quarantine is: a detected-malicious file is moved to a protected store, not merely
+    blocked — so it can be reviewed, restored, or removed
+  - That quarantine is driven by the PREVENTION policy's Quarantine setting: no setting, no
+    quarantine (the file may still be blocked, just not retained for review)
+  - The management actions and their meaning:
+      * Release — restore the file; the sensor stops treating it as malicious. Released files
+        from removable media go to C:\ProgramData\CrowdStrike
+      * Undo Release — re-arm it: the sensor treats it as malicious again and re-quarantines it
+        the NEXT time it executes (not immediately)
+      * Delete — remove the quarantined file
+  - Offline behaviour: a release for an offline host applies when it returns within 30 days;
+    after 30 days offline the file stays quarantined
+  - Why EICAR: a safe industry-standard test file Falcon treats as malicious, so quarantine can
+    be demonstrated for real without real malware
+
+setup:
+  - name: confirm the sensor is healthy
+    shell: |
+      $s = Get-Service CSFalconService -ErrorAction SilentlyContinue
+      if (-not $s -or $s.Status -ne 'Running') { Write-Output 'SENSOR NOT RUNNING'; exit 1 }
+      Write-Output 'ready'
+    expect_contains: ready
+
+instructions: |
+  1. ENSURE QUARANTINE IS ON. Endpoint security > Configure > Prevention policies > Windows >
+     your **Falcon Lab** policy. Confirm the **Quarantine** setting is enabled (and the detection
+     setting that flags known-malicious files), then wait for it to APPLY to the host. Without
+     quarantine on, EICAR is blocked but NOT retained for review — nothing to manage.
+
+  2. PRODUCE A QUARANTINED FILE. Drop EICAR on the host the safe, standard way — the eicar-win
+     exercise: in the control panel tick **keep state** on the eicar-win card and press **set
+     up** (or, with shell access, `./lab.py run eicar-win --no-revert`). EICAR is detected as
+     malicious and, with quarantine on, moved to the quarantine store rather than just blocked.
+
+  3. REVIEW IT. Endpoint security > Monitor > **Quarantined files**. Find the EICAR file on
+     **FALCON-LAB-WIN** and open it. Note the **hash**, the **path** it came from, the **host**,
+     and its **state** — this is the record you would triage during an incident.
+
+  4. LEARN THE ACTIONS (read; try Release if you like). **Release** restores the file and the
+     sensor stops treating it as malicious. **Undo Release** re-arms it — re-quarantined on next
+     execution, not immediately. **Delete** removes it. Remember the offline rule: a release for
+     an offline host lands when it reconnects within 30 days, otherwise it stays quarantined.
+
+  5. Check your work — press **grade** on this scenario's card in the control panel, or with
+     shell access run:
+         lab grade quarantined-files
+
+expect:
+  console: |
+    Endpoint security > Monitor > Quarantined files showing the EICAR file on FALCON-LAB-WIN,
+    with its hash, originating path, and quarantined state.
+  detection: >
+    EICAR detected as malicious and quarantined (not merely blocked), because the prevention
+    policy's Quarantine setting is enabled.
+
+verify:
+  - kind: api
+    label: "(functional) an EICAR file is quarantined on FALCON-LAB-WIN"
+    assert: quarantined_file
+    hostname: "FALCON-LAB-WIN"
+    name_contains: "eicar"
+  - kind: attest
+    label: understanding
+    items:
+      - "I confirmed the Quarantine setting is enabled on the Falcon Lab prevention policy"
+      - "I found the quarantined EICAR file and can read its hash, path, host, and state"
+      - "I can explain Release vs Undo Release vs Delete"
+      - "I know released files from removable media go to C:\\ProgramData\\CrowdStrike"
+      - "I know an offline host's release applies when it returns within 30 days"
+
+hint: >
+  If the functional check reads absent, work back: is the Quarantine setting actually ENABLED on
+  the Falcon Lab prevention policy and APPLIED to the host (pending/applied); did EICAR actually
+  drop and get detected (a file that was blocked-but-not-quarantined never appears here); and has
+  the quarantine event had a moment to surface — re-grade after a short wait. The grader matches
+  quarantined files on FALCON-LAB-WIN by the name 'eicar'.
