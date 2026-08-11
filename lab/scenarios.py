@@ -44,7 +44,7 @@ from . import config, core, falcon, sensor
 REQUIRED = ("id", "name", "target", "mode")
 VALID_TARGETS = set(config.HOSTS) | {"console"}
 VALID_MODES = {"auto", "manual", "guided"}
-VALID_KINDS = {"console", "endpoint", "sensor", "attest"}
+VALID_KINDS = {"console", "endpoint", "sensor", "attest", "api"}
 
 
 def load_all():
@@ -236,8 +236,23 @@ def _check_attest(s, v):
             "items": v.get("items") or []}
 
 
+def _check_api(s, v):
+    """Read console CONFIG via the Falcon API (falconpy), not by scraping the browser.
+
+    Structured and robust where the substring/DOM approach was fragile. Currently supports:
+      assert: policy_group  policy: response|prevention|sensor_update  group: "<name>"
+    """
+    assertion = v.get("assert")
+    if assertion in ("policy_group", "policy_assigned_to_group"):
+        pk, grp = v.get("policy"), v.get("group")
+        if not pk or not grp:
+            return {"ok": None, "reason": "api policy_group check needs 'policy' and 'group'"}
+        return falcon.policy_assigned_to_group(pk, grp)
+    return {"ok": None, "reason": f"unknown api assert {assertion!r}"}
+
+
 _CHECKERS = {"console": _check_console, "endpoint": _check_endpoint,
-             "sensor": _check_sensor, "attest": _check_attest}
+             "sensor": _check_sensor, "attest": _check_attest, "api": _check_api}
 
 
 def grade(sid):

@@ -78,11 +78,11 @@ expect:
     detection.
 
 verify:
-  - kind: console
-    label: a policy is assigned to the Falcon Lab group
-    path: /policies/prevention
-    api_match: /api2/
-    expect_contains: "Falcon Lab"
+  - kind: api
+    label: a prevention policy is assigned to the Falcon Lab group
+    assert: policy_group
+    policy: prevention
+    group: "Falcon Lab"
   - kind: endpoint
     label: eicar file was blocked on disk
     shell: |

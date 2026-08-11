@@ -136,3 +136,108 @@ def available():
         return r["ok"] is not None or "expired" not in (r.get("reason") or "")
     except Exception:  # noqa: BLE001
         return False
+
+
+# --- API-backed reads (falconpy) ------------------------------------------------------
+# Reading console CONFIG (host groups, policy assignments) by capturing browser traffic and
+# substring-matching it is fragile: policies reference groups by ID, so the group NAME the
+# check wants is never in the policy payload (confirmed against falconpy's own data model --
+# assigning a policy takes a group_id, and names live on the host-groups service). The Falcon
+# API answers these questions directly. It is READ-ONLY and optional; with no key configured,
+# these checks report `ok=None` ("could not look"), never a false failure.
+from . import config  # noqa: E402
+
+_API = {}
+
+
+def _clients():
+    """Cached falconpy service objects, or None if unconfigured / falconpy missing.
+    One shared OAuth2 token across the services keeps auth to a single round trip."""
+    if "c" in _API:
+        return _API["c"]
+    creds = config.api_creds()
+    if not creds:
+        _API["c"] = None
+        _API["why"] = ("no Falcon API key configured -- set FALCON_CLIENT_ID/SECRET or "
+                       f"{config.API_CREDS_FILE} (read-only Host Groups + Policies scopes)")
+        return None
+    cid, sec, cloud = creds
+    try:
+        from falconpy import (OAuth2, HostGroup, ResponsePolicies, PreventionPolicy,
+                              SensorUpdatePolicy)
+    except ImportError:
+        _API["c"] = None
+        _API["why"] = "falconpy is not installed (pip install crowdstrike-falconpy)"
+        return None
+    try:
+        auth = OAuth2(client_id=cid, client_secret=sec, base_url=cloud)
+        _API["c"] = {"_hg": HostGroup(auth_object=auth),
+                     "response": ResponsePolicies(auth_object=auth),
+                     "prevention": PreventionPolicy(auth_object=auth),
+                     "sensor_update": SensorUpdatePolicy(auth_object=auth)}
+    except Exception as e:  # noqa: BLE001
+        _API["c"] = None
+        _API["why"] = f"falconpy auth setup failed: {str(e)[:100]}"
+    return _API["c"]
+
+
+def _why_unavailable():
+    return _API.get("why", "Falcon API unavailable")
+
+
+def _group_ids(groups):
+    """A policy's `groups` may be a list of ID strings or of {id,...} objects. Normalise."""
+    out = set()
+    for g in groups or []:
+        if isinstance(g, str):
+            out.add(g)
+        elif isinstance(g, dict) and g.get("id"):
+            out.add(g["id"])
+    return out
+
+
+def _resolve_group_id(clients, name):
+    """Group NAME -> id via the host-groups service (an exact FQL name match)."""
+    r = clients["_hg"].query_combined_host_groups(filter=f"name:'{name}'", limit=10)
+    if r.get("status_code") != 200:
+        raise ConsoleUnavailable(f"host-groups read failed (HTTP {r.get('status_code')}) -- "
+                                 f"check the key's Host Groups read scope")
+    for res in r.get("body", {}).get("resources", []):
+        if (res.get("name") or "") == name:
+            return res.get("id")
+    return None
+
+
+VALID_POLICY_KINDS = ("response", "prevention", "sensor_update")
+
+
+def policy_assigned_to_group(policy_kind, group_name):
+    """Is a <policy_kind> policy assigned to the host group named <group_name>?
+
+    Returns {ok, reason}. `ok is None` = could not look (no key / auth / scope) -- never a pass.
+    Resolves the group name to an ID, then checks each policy's assigned groups for that ID --
+    the correct two-step the substring grader could not do.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    if policy_kind not in clients:
+        return {"ok": None, "reason": f"unknown policy kind {policy_kind!r}"}
+    try:
+        gid = _resolve_group_id(clients, group_name)
+        if gid is None:
+            return {"ok": False, "reason": f"no host group named {group_name!r} exists"}
+        r = clients[policy_kind].query_combined_policies(limit=500)
+        if r.get("status_code") != 200:
+            return {"ok": None, "reason": f"{policy_kind}-policy read failed "
+                    f"(HTTP {r.get('status_code')}) -- check the key's read scope for it"}
+        for p in r.get("body", {}).get("resources", []):
+            if gid in _group_ids(p.get("groups")):
+                return {"ok": True, "reason": f"{policy_kind} policy {p.get('name')!r} "
+                        f"is assigned to {group_name!r}"}
+        return {"ok": False, "reason": f"no {policy_kind} policy is assigned to "
+                f"the {group_name!r} group"}
+    except ConsoleUnavailable as e:
+        return {"ok": None, "reason": str(e)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}

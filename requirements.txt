@@ -1,0 +1,15 @@
+# Falcon lab dependencies. Install into a venv:
+#   python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+#
+# The web panel / scenario runner:
+fastapi>=0.141
+uvicorn>=0.52
+PyYAML>=6.0
+# CDP transport for the browser agent (observing a console session, docs harvest):
+cdp-use>=1.4
+websockets>=17
+httpx>=0.28
+# Read-only Falcon API access for the grading layer (host groups, policy assignments).
+# Optional at runtime: with no API key configured the lab still runs and API-backed checks
+# report "not configured" rather than failing. See lab/config.py: api_creds().
+crowdstrike-falconpy>=1.6

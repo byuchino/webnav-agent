@@ -87,6 +87,39 @@ def ccid():
         return None
 
 
+# Read-only Falcon API credentials, used by the grading layer to read console CONFIG state
+# (host groups, policy assignments) reliably instead of scraping the browser. Optional: with no
+# creds the lab still runs; API-backed checks just report "not configured" rather than failing.
+#
+# Deployable by design -- a deployer supplies their own. Two ways, env wins:
+#   export FALCON_CLIENT_ID=... FALCON_CLIENT_SECRET=... FALCON_CLOUD=us-2
+# or a 0600 JSON file (keeps the secret out of shell history and process listings):
+#   mkdir -p ~/.falcon-lab && chmod 700 ~/.falcon-lab
+#   printf '{"client_id":"...","client_secret":"...","cloud":"us-2"}' > ~/.falcon-lab/api.json
+#   chmod 600 ~/.falcon-lab/api.json
+# The client needs only READ scopes: Host Groups (read) and the policy types you grade
+# (Response, Prevention, Sensor update -- read). It cannot change anything.
+API_CREDS_FILE = pathlib.Path(os.environ.get(
+    "LAB_API_CREDS_FILE", pathlib.Path.home() / ".falcon-lab" / "api.json"))
+FALCON_CLOUD = os.environ.get("FALCON_CLOUD", "us-2")
+
+
+def api_creds():
+    """(client_id, client_secret, cloud) or None. The secret is never logged or printed."""
+    cid = os.environ.get("FALCON_CLIENT_ID")
+    sec = os.environ.get("FALCON_CLIENT_SECRET")
+    if cid and sec:
+        return cid, sec, os.environ.get("FALCON_CLOUD", FALCON_CLOUD)
+    try:
+        import json
+        d = json.loads(API_CREDS_FILE.read_text())
+        if d.get("client_id") and d.get("client_secret"):
+            return d["client_id"], d["client_secret"], d.get("cloud", FALCON_CLOUD)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
 WIN_STAGE = r"C:\lab"
 LNX_STAGE = "/opt/lab"
 
