@@ -244,8 +244,10 @@ async function revert(host, baseline, btn){
 
 async function loadScen(){
   const r = await (await fetch('/api/scenarios')).json();
+  window.SCEN = {};
   let html = '', dom = null;
   for(const s of r){
+    SCEN[s.id] = s;
     if(s.domain !== dom){ dom = s.domain; html += `<h2>${s.domain}. ${esc(s.domain_name)}</h2>`; }
     const req = (s.requires||[]).length ? `<span class="meta">needs ${esc((s.requires||[]).join(', '))}</span>` : '';
     html += `
@@ -257,6 +259,7 @@ async function loadScen(){
         <span class="pill">${esc(s.target)}</span>
         ${s.objective?`<span class="meta">${esc(s.objective)}</span>`:''}
         <span class="spacer"></span>
+        <button onclick="show('${s.id}')" title="Show the full instructions only — does not touch the guest or reset anything.">show</button>
         ${(s.baseline && s.baseline!=='none') ? `<label class="skip" title="Do NOT revert the guest first — keep its current state. Use this when an earlier step configured the host and reverting would undo it."><input type="checkbox" class="norevert"> keep state</label>` : ''}
         <button class="primary" onclick="run('${s.id}',this)">
           ${s.mode==='auto'?'run':'set up'}</button>
@@ -279,6 +282,16 @@ async function loadScen(){
 }
 
 function box(id, inner){ $('#out-'+id).innerHTML = inner; }
+
+// Show the instructions WITHOUT preparing anything -- purely client-side from data already
+// loaded. "set up" reverts and runs setup steps (destructive); "show" must never do either, so
+// re-reading an exercise can't reset a marker or roll back a guest.
+function show(id){
+  const s = (window.SCEN || {})[id]; if(!s) return;
+  let out = (s.instructions ? s.instructions : (s.summary || '')).trim();
+  if(s.expect && s.expect.console) out += `\n\nLook in Falcon: ${s.expect.console.trim()}`;
+  box(id, `<pre>${esc(out)}</pre>`);
+}
 // Grading renders into its OWN area so it never wipes the instructions above it -- an
 // exercise's optional/after-grading steps must survive a grade click.
 function gbox(id, inner){ $('#grade-'+id).innerHTML = inner; }
