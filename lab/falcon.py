@@ -197,12 +197,18 @@ def _group_ids(groups):
 
 
 def _resolve_group_id(clients, name):
-    """Group NAME -> id via the host-groups service (an exact FQL name match)."""
-    r = clients["_hg"].query_combined_host_groups(filter=f"name:'{name}'", limit=10)
+    """Group NAME -> id via the host-groups service.
+
+    Matches client-side rather than with an FQL `name:'...'` filter: server-side name matching
+    on values with spaces proved unreliable (it returned no rows for a group that plainly
+    exists), and a CID has few enough host groups that fetching them and comparing names is both
+    simpler and exact.
+    """
+    r = clients["_hg"].query_combined_host_groups(limit=500)
     if r.get("status_code") != 200:
         raise ConsoleUnavailable(f"host-groups read failed (HTTP {r.get('status_code')}) -- "
                                  f"check the key's Host Groups read scope")
-    for res in r.get("body", {}).get("resources", []):
+    for res in (r.get("body") or {}).get("resources") or []:
         if (res.get("name") or "") == name:
             return res.get("id")
     return None
@@ -231,7 +237,7 @@ def policy_assigned_to_group(policy_kind, group_name):
         if r.get("status_code") != 200:
             return {"ok": None, "reason": f"{policy_kind}-policy read failed "
                     f"(HTTP {r.get('status_code')}) -- check the key's read scope for it"}
-        for p in r.get("body", {}).get("resources", []):
+        for p in (r.get("body") or {}).get("resources") or []:
             if gid in _group_ids(p.get("groups")):
                 return {"ok": True, "reason": f"{policy_kind} policy {p.get('name')!r} "
                         f"is assigned to {group_name!r}"}
