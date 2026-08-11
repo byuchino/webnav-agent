@@ -126,3 +126,10 @@ hint: >
   console check passes but the functional check says 'absent', the policy is assigned but the
   binary did not execute — most often run is still disabled, the policy has not landed, or you
   ran it in a session that predates the change. Re-grade after C:\rtr-run-proof is created.
+
+  A confusing gotcha worth knowing: RTR provisions your command set from your ROLE + the
+  response policy, so a command you are not entitled to appears as **"Command not found"**, NOT
+  as a permission error. `run`, `put`, `runscript -Raw`/`-HostPath`, and Falcon scripts
+  (`falconscript`) all need the **RTR Administrator** role — an Active Responder trying any of
+  them gets "Command not found", which looks like the command does not exist. If a script or
+  binary command reads "Command not found", check your role before anything else.
