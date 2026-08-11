@@ -349,7 +349,7 @@ def ml_exclusion_exists(path_contains, group_name=None):
         q = clients["ml_exclusions"].query_exclusions(limit=500)
         if q.get("status_code") != 200:
             return {"ok": None, "reason": f"ML-exclusions read failed (HTTP {q.get('status_code')})"
-                    f" -- check the key's ML Exclusions read scope"}
+                    f" -- check the key's Machine Learning Exclusions read scope"}
         ids = (q.get("body") or {}).get("resources") or []
         if not ids:
             return {"ok": False, "reason": "no ML exclusions exist in this CID"}
