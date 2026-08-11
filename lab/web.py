@@ -176,6 +176,7 @@ PAGE = r"""
   button.primary:hover:not(:disabled){color:#fff;opacity:.9}
   label.skip{font-size:12px;color:var(--dim);display:inline-flex;align-items:center;gap:3px;
     margin-right:4px;cursor:pointer;user-select:none}
+  [id^="grade-"]:not(:empty){margin-top:8px}
   h2{font-size:12px;margin:24px 0 8px;text-transform:uppercase;letter-spacing:.09em;
      color:var(--dim);font-weight:650}
   .name{font-weight:600}
@@ -271,12 +272,16 @@ async function loadScen(){
         ${req}
       </div>
       <div id="out-${s.id}"></div>
+      <div id="grade-${s.id}"></div>
     </div>`;
   }
   $('#scen').innerHTML = html;
 }
 
 function box(id, inner){ $('#out-'+id).innerHTML = inner; }
+// Grading renders into its OWN area so it never wipes the instructions above it -- an
+// exercise's optional/after-grading steps must survive a grade click.
+function gbox(id, inner){ $('#grade-'+id).innerHTML = inner; }
 
 // Long operations need a floor under them: a revert plus a Windows boot is minutes, and a
 // frozen button is indistinguishable from a crash.
@@ -361,7 +366,7 @@ async function run(id, btn){
 async function grade(id, btn){
   btn.disabled=true;
   const r = await call(`/api/grade/${id}`, btn, 'checking', 300);
-  if(r.error){ box(id, `<pre class="bad">${esc(r.error)}</pre>`); return; }
+  if(r.error){ gbox(id, `<pre class="bad">${esc(r.error)}</pre>`); return; }
   const label = r.passed===true ? ['PASS','ok'] : r.passed===false ? ['NOT YET','bad']
                                                                   : ['UNVERIFIED','dim'];
   let h = `<div class="checks">`;
@@ -377,7 +382,7 @@ async function grade(id, btn){
   }
   h += `<div class="verdict ${label[1]}">${label[0]}</div></div>`;
   if(r.passed !== true && r.hint) h += `<pre class="dim">${esc(r.hint.trim())}</pre>`;
-  box(id, h);
+  gbox(id, h);
   loadHosts();
 }
 
