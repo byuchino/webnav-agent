@@ -164,7 +164,7 @@ def _clients():
     cid, sec, cloud = creds
     try:
         from falconpy import (OAuth2, HostGroup, ResponsePolicies, PreventionPolicy,
-                              SensorUpdatePolicy, Hosts)
+                              SensorUpdatePolicy, Hosts, CustomIOA, Alerts)
     except ImportError:
         _API["c"] = None
         _API["why"] = "falconpy is not installed (pip install crowdstrike-falconpy)"
@@ -173,6 +173,8 @@ def _clients():
         auth = OAuth2(client_id=cid, client_secret=sec, base_url=cloud)
         _API["c"] = {"_hg": HostGroup(auth_object=auth),
                      "hosts": Hosts(auth_object=auth),
+                     "custom_ioa": CustomIOA(auth_object=auth),
+                     "alerts": Alerts(auth_object=auth),
                      "response": ResponsePolicies(auth_object=auth),
                      "prevention": PreventionPolicy(auth_object=auth),
                      "sensor_update": SensorUpdatePolicy(auth_object=auth)}
@@ -267,5 +269,67 @@ def visible_host_count_is(hostname, equals):
         n = len(((r.get("body") or {}).get("resources")) or [])
         return {"ok": n == equals,
                 "reason": f"{n} visible host(s) named {hostname!r} (expected {equals})"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
+def ioa_rule_group_enabled(name):
+    """Is there a custom IOA rule group named `name` that is enabled? (Custom IOAs read scope.)
+
+    Matches client-side, like the host-group lookup, to avoid FQL name-filter quirks.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        r = clients["custom_ioa"].query_rule_groups_full(limit=500)
+        if r.get("status_code") != 200:
+            return {"ok": None, "reason": f"custom-IOA read failed (HTTP {r.get('status_code')})"
+                    f" -- check the key's Custom IOAs read scope"}
+        for g in (r.get("body") or {}).get("resources") or []:
+            if (g.get("name") or "") == name:
+                if g.get("enabled"):
+                    rules = g.get("rules") or []
+                    on = [x for x in rules if x.get("enabled")]
+                    return {"ok": True, "reason": f"IOA rule group {name!r} is enabled "
+                            f"with {len(on)}/{len(rules)} rule(s) enabled"}
+                return {"ok": False, "reason": f"IOA rule group {name!r} exists but is DISABLED"}
+        return {"ok": False, "reason": f"no custom IOA rule group named {name!r} exists"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
+def recent_detection_contains(token, within_min=30):
+    """Did any alert in the last `within_min` minutes contain `token` anywhere in its payload?
+
+    The trigger uses a distinctive token in the command line, so a substring match over the
+    alert JSON is a reliable, rule-name-independent way to confirm the IOA actually fired.
+    Needs the Alerts read scope. Detection latency is real -- this may read False for a minute
+    or two after the trigger, so re-grade.
+    """
+    import datetime as _dt
+    import json as _json
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        since = (_dt.datetime.now(_dt.timezone.utc)
+                 - _dt.timedelta(minutes=within_min)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        q = clients["alerts"].query_alerts_v2(
+            filter=f"created_timestamp:>'{since}'", limit=200, sort="created_timestamp|desc")
+        if q.get("status_code") != 200:
+            return {"ok": None, "reason": f"alerts read failed (HTTP {q.get('status_code')}) -- "
+                    f"check the key's Alerts read scope"}
+        ids = (q.get("body") or {}).get("resources") or []
+        if not ids:
+            return {"ok": False, "reason": f"no alerts at all in the last {within_min} min "
+                    f"(trigger the IOA, then allow a minute for the detection to surface)"}
+        d = clients["alerts"].get_alerts_v2(composite_ids=ids)
+        for a in (d.get("body") or {}).get("resources") or []:
+            if token in _json.dumps(a):
+                return {"ok": True, "reason": f"a detection containing {token!r} fired "
+                        f"(the IOA matched)"}
+        return {"ok": False, "reason": f"{len(ids)} recent alert(s), but none contain {token!r} "
+                f"-- has the rule matched and the detection surfaced yet?"}
     except Exception as e:  # noqa: BLE001
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}

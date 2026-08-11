@@ -1,0 +1,113 @@
+id: custom-ioa-behavioral
+name: Custom IOA — detect a behavior, not a file (Windows)
+target: win
+baseline: sensor
+mode: guided
+domain: 6
+difficulty: 3
+duration_min: 35
+objective: "6.x — create and assign custom IOA rule groups; contrast behavioral IOAs with static IOCs"
+requires: [lab-host-group, sensor-install-win, ioc-blocklist-hash]
+
+summary: >
+  The behavioral counterpart to ioc-blocklist-hash. An IOC blocks one exact file hash; a custom
+  IOA detects a PATTERN OF BEHAVIOUR regardless of the file. You write a custom IOA that fires on
+  a distinctive command line, assign it to the prevention policy, trigger it on the host, and
+  confirm the detection — proving the whole behavioural chain end to end.
+
+teaches: |
+  - The IOC vs IOA distinction the exam probes: an IOC is static and exact (a hash — rename or
+    recompile the file and it no longer matches); an IOA is behavioural and resilient (a pattern
+    that still matches even when the file changes)
+  - That custom IOAs live in RULE GROUPS, assigned to PREVENTION policies, per platform
+  - The stacked enable gates — nothing fires unless ALL hold: the RULE is enabled, the rule GROUP
+    is enabled, the group is assigned to a policy, the policy is applied, and something actually
+    performs the behaviour
+  - Rule actions — Monitor (log only) vs Detect vs Prevent — and severity
+  - That the same policy-propagation delay applies: after assigning, the rule must reach the host
+    before a trigger will detect (the pending/applied clock again)
+
+setup:
+  - name: confirm the sensor is healthy
+    shell: |
+      $s = Get-Service CSFalconService -ErrorAction SilentlyContinue
+      if (-not $s -or $s.Status -ne 'Running') { Write-Output 'SENSOR NOT RUNNING'; exit 1 }
+      Write-Output 'ready'
+    expect_contains: ready
+
+instructions: |
+  This is the IOA half of Domain 6 — the behavioural detection that ioc-blocklist-hash's static
+  hash block cannot do. You will make Falcon detect a command line, run that command, and watch
+  the detection appear.
+
+  1. CREATE THE RULE GROUP. Endpoint security > Configure > Custom IOA rule groups. Add a rule
+     group for the **Windows** platform, named EXACTLY **Falcon Lab IOA** (the grader looks it up
+     by that name). Enable the group.
+
+  2. ADD A RULE. Inside the group, add a **Process Creation** rule:
+       - Action: **Detect** (Monitor only logs; the functional check needs an actual detection)
+       - Severity: your choice
+       - Image Filename (regex):  `.*\\cmd\.exe`
+       - Command Line (regex):    `.*FALCONLAB-IOA-TEST.*`
+     **Enable the rule.** A disabled rule inside an enabled group still does nothing — that is
+     the gate people miss.
+
+  3. ASSIGN IT. Endpoint security > Configure > Prevention policies > Windows > your **Falcon
+     Lab** policy > **Assigned custom IOAs** tab > Assign rule group > **Falcon Lab IOA**. Then
+     wait for the policy to APPLY to the host — same pending/applied delay as every other policy
+     change; a rule that has not reached the host will not fire.
+
+  4. TRIGGER IT. Perform the behaviour on the host. The console-native, real-world way is RTR
+     (needs RTR Administrator and `run` enabled on the response policy — see rtr-run-binaries):
+         run "C:\Windows\System32\cmd.exe" -CommandLine="/c echo FALCONLAB-IOA-TEST"
+     Any execution of that command line works — the IOA matches the behaviour, not how it was
+     launched.
+
+  5. CONFIRM. Endpoint security > Monitor > Endpoint detections. A new detection should appear,
+     attributed to your IOA rule. Open it and note that it shows the exact command line that
+     matched — the behaviour, not a file hash.
+
+  6. Check your work — press **grade** on this scenario's card in the control panel, or with
+     shell access run:
+         lab grade custom-ioa-behavioral
+
+  The point to carry away: this rule fires no matter what the executable is named or hashed, as
+  long as it runs that command line. That resilience is the whole reason IOAs exist alongside
+  IOCs — and is exactly the contrast the exam draws.
+
+expect:
+  console: |
+    A Custom IOA rule group "Falcon Lab IOA" (Windows), enabled, with an enabled Process Creation
+    rule, assigned to the Falcon Lab prevention policy — and a matching entry in Endpoint
+    detections after the trigger.
+  detection: >
+    A behavioural detection whose command line contains FALCONLAB-IOA-TEST, raised by your custom
+    IOA rule (not by a hash-based IOC).
+
+verify:
+  - kind: api
+    label: a custom IOA rule group "Falcon Lab IOA" exists and is enabled
+    assert: ioa_group_enabled
+    group: "Falcon Lab IOA"
+  - kind: api
+    label: "(functional) a detection fired matching the IOA behaviour"
+    assert: detection_contains
+    contains: "FALCONLAB-IOA-TEST"
+    within_min: 30
+  - kind: attest
+    label: understanding
+    items:
+      - "I created and enabled a custom IOA rule group and an enabled rule inside it"
+      - "I assigned the rule group to the Falcon Lab prevention policy and let it apply"
+      - "I triggered the behaviour and saw the detection show the command line, not a hash"
+      - "I can explain how an IOA differs from an IOC (behaviour vs static hash)"
+      - "I can name the gates that must all be true for a custom IOA to fire"
+
+hint: >
+  If the functional check reads absent, walk the gates in order — any one stops it: is the RULE
+  enabled (not just the group); is the GROUP enabled; is the group assigned to the Falcon Lab
+  prevention policy; has that policy APPLIED to the host (pending/applied); did the command line
+  actually run and match the regex; and has the detection had a minute to surface (re-grade after
+  a short wait). If the rule-group check passes but functional does not, configuration is fine
+  and you are on the trigger/latency side. Note the grader matches recent alerts on the token, so
+  a distinctive command line is what makes this reliable.
