@@ -248,6 +248,11 @@ def _check_api(s, v):
         if not pk or not grp:
             return {"ok": None, "reason": "api policy_group check needs 'policy' and 'group'"}
         return falcon.policy_assigned_to_group(pk, grp)
+    if assertion == "host_count":
+        hn = v.get("hostname")
+        if not hn:
+            return {"ok": None, "reason": "api host_count check needs 'hostname'"}
+        return falcon.visible_host_count_is(hn, v.get("equals", 1))
     return {"ok": None, "reason": f"unknown api assert {assertion!r}"}
 
 

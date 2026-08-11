@@ -97,8 +97,8 @@ def ccid():
 #   mkdir -p ~/.falcon-lab && chmod 700 ~/.falcon-lab
 #   printf '{"client_id":"...","client_secret":"...","cloud":"us-2"}' > ~/.falcon-lab/api.json
 #   chmod 600 ~/.falcon-lab/api.json
-# The client needs only READ scopes: Host Groups (read) and the policy types you grade
-# (Response, Prevention, Sensor update -- read). It cannot change anything.
+# The client needs only READ scopes: Host Groups, Hosts, and the policy types you grade
+# (Response, Prevention, Sensor update) -- all read-only. It cannot change anything.
 API_CREDS_FILE = pathlib.Path(os.environ.get(
     "LAB_API_CREDS_FILE", pathlib.Path.home() / ".falcon-lab" / "api.json"))
 FALCON_CLOUD = os.environ.get("FALCON_CLOUD", "us-2")

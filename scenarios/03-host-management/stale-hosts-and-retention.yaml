@@ -66,27 +66,28 @@ expect:
   detection: none
 
 verify:
-  - kind: console
-    label: only one live FALCON-LAB-WIN remains
-    path: /host-management/hosts
-    api_match: /api2/devices
-    expect_contains: "falcon-lab"
-  - kind: console
-    label: a retention policy references the lab group
-    path: /host-management/policies/host-retention
-    api_match: /api2/
-    expect_contains: "Falcon Lab"
+  - kind: api
+    label: only one visible FALCON-LAB-WIN remains (the stale duplicate is hidden)
+    assert: host_count
+    hostname: "FALCON-LAB-WIN"
+    equals: 1
   - kind: attest
     label: understanding
     items:
       - "I hid the stale duplicate and confirmed it moved to Hidden hosts"
       - "I can state the difference between hiding and deleting a host"
-      - "A retention policy now covers the Falcon Lab group"
+      - "I created/assigned a host-retention policy covering the Falcon Lab group"
       - "I can say where the inactive-host retention period is configured, not just its value"
 
 hint: >
-  The first check only confirms the hosts page returned lab data — it cannot count duplicates
-  for you, because the console's response shape is not something to assert on. Judge that one
-  by eye in the Hosts tab. If the retention check fails, the policy probably exists but is not
-  assigned to Falcon Lab: creation and assignment are separate steps, and assignment is the
-  one people skip.
+  The first check now genuinely counts: hidden hosts are excluded from device queries, so
+  "exactly one visible FALCON-LAB-WIN" is real proof the stale duplicate is hidden. If it reads
+  2, you have not hidden the stale one yet; if 0, you hid or deleted the live one too.
+
+  The retention step is self-attested, not auto-checked, and that is deliberate: host-retention
+  POLICIES are not exposed by the Falcon API (only a per-device "which retention policy is
+  applied" field), and in a small all-lab CID that field cannot distinguish a custom policy
+  assigned to Falcon Lab from the platform default — so an automated check there would risk
+  passing on the default and teaching nothing. Confirm the assignment by eye: the policy exists
+  AND is assigned to Falcon Lab (creation and assignment are separate steps; assignment is the
+  one people skip).

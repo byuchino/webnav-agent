@@ -164,7 +164,7 @@ def _clients():
     cid, sec, cloud = creds
     try:
         from falconpy import (OAuth2, HostGroup, ResponsePolicies, PreventionPolicy,
-                              SensorUpdatePolicy)
+                              SensorUpdatePolicy, Hosts)
     except ImportError:
         _API["c"] = None
         _API["why"] = "falconpy is not installed (pip install crowdstrike-falconpy)"
@@ -172,6 +172,7 @@ def _clients():
     try:
         auth = OAuth2(client_id=cid, client_secret=sec, base_url=cloud)
         _API["c"] = {"_hg": HostGroup(auth_object=auth),
+                     "hosts": Hosts(auth_object=auth),
                      "response": ResponsePolicies(auth_object=auth),
                      "prevention": PreventionPolicy(auth_object=auth),
                      "sensor_update": SensorUpdatePolicy(auth_object=auth)}
@@ -245,5 +246,26 @@ def policy_assigned_to_group(policy_kind, group_name):
                 f"the {group_name!r} group"}
     except ConsoleUnavailable as e:
         return {"ok": None, "reason": str(e)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
+def visible_host_count_is(hostname, equals):
+    """Are there exactly `equals` VISIBLE (non-hidden) hosts with this hostname?
+
+    Hidden hosts are excluded from device queries, so this actually verifies a dedup: a stale
+    duplicate that was hidden no longer counts. Needs the key's Hosts read scope.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        r = clients["hosts"].query_devices_by_filter(filter=f"hostname:'{hostname}'", limit=500)
+        if r.get("status_code") != 200:
+            return {"ok": None, "reason": f"devices read failed (HTTP {r.get('status_code')}) -- "
+                    f"check the key's Hosts read scope"}
+        n = len(((r.get("body") or {}).get("resources")) or [])
+        return {"ok": n == equals,
+                "reason": f"{n} visible host(s) named {hostname!r} (expected {equals})"}
     except Exception as e:  # noqa: BLE001
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
