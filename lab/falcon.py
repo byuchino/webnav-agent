@@ -164,7 +164,7 @@ def _clients():
     cid, sec, cloud = creds
     try:
         from falconpy import (OAuth2, HostGroup, ResponsePolicies, PreventionPolicy,
-                              SensorUpdatePolicy, Hosts, CustomIOA, Alerts)
+                              SensorUpdatePolicy, Hosts, CustomIOA, Alerts, MLExclusions)
     except ImportError:
         _API["c"] = None
         _API["why"] = "falconpy is not installed (pip install crowdstrike-falconpy)"
@@ -175,6 +175,7 @@ def _clients():
                      "hosts": Hosts(auth_object=auth),
                      "custom_ioa": CustomIOA(auth_object=auth),
                      "alerts": Alerts(auth_object=auth),
+                     "ml_exclusions": MLExclusions(auth_object=auth),
                      "response": ResponsePolicies(auth_object=auth),
                      "prevention": PreventionPolicy(auth_object=auth),
                      "sensor_update": SensorUpdatePolicy(auth_object=auth)}
@@ -331,5 +332,44 @@ def recent_detection_contains(token, within_min=30):
                         f"(the IOA matched)"}
         return {"ok": False, "reason": f"{len(ids)} recent alert(s), but none contain {token!r} "
                 f"-- has the rule matched and the detection surfaced yet?"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
+def ml_exclusion_exists(path_contains, group_name=None):
+    """Is there an ML exclusion whose path contains `path_contains`, applied to `group_name`
+    (or globally)? (ML Exclusions read scope; Host Groups read to resolve the group name.)
+
+    Substring-matches the exclusion's `value` so it survives the console's path/glob formatting.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        q = clients["ml_exclusions"].query_exclusions(limit=500)
+        if q.get("status_code") != 200:
+            return {"ok": None, "reason": f"ML-exclusions read failed (HTTP {q.get('status_code')})"
+                    f" -- check the key's ML Exclusions read scope"}
+        ids = (q.get("body") or {}).get("resources") or []
+        if not ids:
+            return {"ok": False, "reason": "no ML exclusions exist in this CID"}
+        d = clients["ml_exclusions"].get_exclusions(ids=ids)
+        gid = _resolve_group_id(clients, group_name) if group_name else None
+        path_hit = False
+        for e in (d.get("body") or {}).get("resources") or []:
+            val = e.get("value") or ""
+            if path_contains.lower() not in val.lower():
+                continue
+            path_hit = True
+            if not group_name:
+                return {"ok": True, "reason": f"ML exclusion for {val!r} exists"}
+            if e.get("applied_globally"):
+                return {"ok": True, "reason": f"ML exclusion for {val!r} applies globally"}
+            if gid and gid in _group_ids(e.get("groups")):
+                return {"ok": True, "reason": f"ML exclusion for {val!r} assigned to {group_name!r}"}
+        if path_hit:
+            return {"ok": False, "reason": f"an ML exclusion matching {path_contains!r} exists but "
+                    f"is not applied to {group_name!r} (nor globally)"}
+        return {"ok": False, "reason": f"no ML exclusion whose path contains {path_contains!r}"}
     except Exception as e:  # noqa: BLE001
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}

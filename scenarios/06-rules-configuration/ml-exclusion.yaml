@@ -1,0 +1,90 @@
+id: ml-exclusion
+name: Exclusions — the three types, and an ML exclusion you can verify
+target: console
+mode: manual
+domain: 6
+difficulty: 2
+duration_min: 20
+objective: "6.x — distinguish exclusion types and their scope/risk; configure a Machine Learning exclusion"
+requires: [lab-host-group]
+
+summary: >
+  Exclusions tell Falcon to stop acting on something — and the exam cares that you know which
+  type does what, because they differ enormously in blast radius. You will compare the three
+  types, then configure a Machine Learning exclusion for a path and assign it to the Falcon Lab
+  group. The grader confirms it via the API; the effect itself is understood, not triggered
+  (see the note below on why).
+
+teaches: |
+  - The three exclusion types and their scope, smallest blast radius to largest:
+      * IOA exclusion — suppresses specific IOA-rule detections only
+      * Machine Learning exclusion — suppresses only ML detections/preventions on a path; IOAs,
+        IOCs and other detection logic on that path still fire
+      * Sensor Visibility exclusion — the sensor stops generating events for the path AT ALL,
+        which removes telemetry and every detection type — the biggest blind spot, use sparingly
+  - That an ML exclusion is a deliberate BLIND SPOT: malware dropped in that path is ignored by
+    ML, so exclusions are a false-positive tool of last resort, scoped as tightly as possible
+  - That exclusions are matched by a path/glob VALUE and applied to host groups (or globally)
+  - Why "exclude from ML" is not "exclude from everything" — the distinction the exam draws
+
+instructions: |
+  No guest is touched here — this is console configuration plus understanding.
+
+  1. COMPARE THE TYPES FIRST. Endpoint security > Configure > Exclusions. Look at the three
+     tabs — Sensor visibility, Machine learning, IOA (names may vary slightly). Read what each
+     says it does. The mental model to lock in: Sensor Visibility is the biggest hammer (no
+     events at all for the path), ML is narrower (only ML stops acting), IOA is narrowest
+     (specific rule detections). Choosing the wrong one either misses the false positive you were
+     trying to silence or blinds you far more than intended.
+
+  2. CREATE A MACHINE LEARNING EXCLUSION. On the Machine learning tab, add an exclusion:
+       - Path / value: something containing **FalconLabMLX**, e.g. `C:\FalconLabMLX\*`
+         (the grader matches on that distinctive folder name, whatever glob format the console
+         uses).
+       - Exclude from: detections (and preventions, if offered).
+       - Apply to: the **Falcon Lab** host group — NOT "all hosts". Scoping to a group is the
+         habit to build; a global exclusion is a CID-wide blind spot.
+     Save.
+
+  3. UNDERSTAND WHAT YOU JUST DID. Files under that path are now invisible to Falcon's ML on the
+     Falcon Lab hosts. IOAs and IOCs would still act on them — that is the whole point of ML
+     being a separate, narrower exclusion than Sensor Visibility. State to yourself why you would
+     ever want this (a trusted app the ML keeps flagging) and why you would scope it tightly.
+
+  4. Check your work — press **grade** on this scenario's card in the control panel, or with
+     shell access run:
+         lab grade ml-exclusion
+
+  Why there is no "prove it works" step: unlike the custom-IOA exercise, an ML exclusion cannot
+  be demonstrated safely. Proving ML *stopped* detecting something requires a file ML actually
+  flags — i.e. real malware — which has no place in a teaching lab. So this exercise verifies the
+  exclusion is CONFIGURED (via the API) and tests that you understand its effect; it does not
+  trigger an ML detection to watch it be suppressed. The exam tests the concepts and the
+  configuration, which is exactly what this covers.
+
+expect:
+  console: |
+    A Machine Learning exclusion whose path contains FalconLabMLX, applied to the Falcon Lab host
+    group (not globally).
+  detection: none
+
+verify:
+  - kind: api
+    label: an ML exclusion for the FalconLabMLX path is assigned to Falcon Lab
+    assert: ml_exclusion
+    path_contains: "FalconLabMLX"
+    group: "Falcon Lab"
+  - kind: attest
+    label: understanding
+    items:
+      - "I can rank the three exclusion types by blast radius (IOA < ML < Sensor Visibility)"
+      - "I know an ML exclusion suppresses only ML — IOAs and IOCs still act on that path"
+      - "I scoped the exclusion to the Falcon Lab group, not to all hosts"
+      - "I can explain why an exclusion is a deliberate blind spot and a last resort"
+
+hint: >
+  If the check reads absent: confirm the exclusion is on the MACHINE LEARNING tab (not Sensor
+  visibility or IOA), that its path actually contains FalconLabMLX, and that it is applied to the
+  Falcon Lab group or globally — an exclusion assigned to no group (or a different one) will not
+  match. The grader substring-matches the path value, so the exact glob format does not matter,
+  only that FalconLabMLX appears in it.

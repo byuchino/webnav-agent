@@ -263,6 +263,11 @@ def _check_api(s, v):
         if not tok:
             return {"ok": None, "reason": "api detection_contains check needs 'contains'"}
         return falcon.recent_detection_contains(tok, v.get("within_min", 30))
+    if assertion == "ml_exclusion":
+        path = v.get("path_contains")
+        if not path:
+            return {"ok": None, "reason": "api ml_exclusion check needs 'path_contains'"}
+        return falcon.ml_exclusion_exists(path, v.get("group"))
     return {"ok": None, "reason": f"unknown api assert {assertion!r}"}
 
 
