@@ -237,6 +237,58 @@ lab-host-group               UNVERIFIED
 conflates them is worse than no grader. `attest` items are shown as an honest checklist and
 never counted as verification.
 
+## Reading console state: a read-only Falcon API key (`kind: api`)
+
+`console` checks scrape the browser's own API traffic over CDP. That works for simple presence
+assertions, but it breaks on anything relational — a policy references a host group by **ID**,
+so the group *name* a check wants is never in the scraped payload. Rather than reverse-engineer
+the console's undocumented internal API, the grader reads config state from the **documented
+Falcon API** via `falconpy`, behind the `lab/falcon.py` seam. It is **read-only and optional**:
+with no key configured, `api` checks return `None` ("could not look"), never a false failure.
+
+**Credentials** (`config.api_creds()`), env wins over the file:
+
+```
+export FALCON_CLIENT_ID=... FALCON_CLIENT_SECRET=... FALCON_CLOUD=us-2
+# or a 0600 file (keeps the secret out of shell history):
+printf '{"client_id":"...","client_secret":"...","cloud":"us-2"}' > ~/.falcon-lab/api.json
+chmod 600 ~/.falcon-lab/api.json
+```
+
+**Create the API client** in the console (Support and resources → API clients and keys) with
+only these **read** scopes — it cannot change anything:
+
+| Scope (exact console label) | Used by |
+|---|---|
+| Host Groups | group-name→id resolution (all `policy_group` checks) |
+| Hosts | `host_count` (duplicate/stale-host dedup) |
+| Response / Prevention / Sensor update Policies | `policy_group` per type |
+| Custom IOA Rules | `ioa_group_enabled` |
+| Alerts | `detection_contains` (IOA fired) |
+| Machine Learning Exclusions | `ml_exclusion` |
+| Quarantined Files | `quarantined_file` |
+
+**`kind: api` asserts** (in a scenario's `verify` list):
+
+```yaml
+- kind: api
+  assert: policy_group        # policy: response|prevention|sensor_update + group: "<name>"
+- kind: api
+  assert: host_count          # hostname: "<name>" + equals: <n>  (visible = non-hidden)
+- kind: api
+  assert: ioa_group_enabled   # group: "<rule group name>"
+- kind: api
+  assert: detection_contains  # contains: "<token>" + within_min: <n>
+- kind: api
+  assert: ml_exclusion        # path_contains: "<token>" + group: "<name>"
+- kind: api
+  assert: quarantined_file    # hostname: "<name>" + name_contains: "<token>"
+```
+
+Two implementation notes worth keeping: group/host **names are resolved client-side** (the FQL
+`name:'…'` filter returned null for a group that plainly exists), and API responses can carry
+`"resources": null`, so every read normalises with `or []`.
+
 ## The web panel
 
 `./lab.py web` serves the same functions as a page, so you can run scenarios yourself without
