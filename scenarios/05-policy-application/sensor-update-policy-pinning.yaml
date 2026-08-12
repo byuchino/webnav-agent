@@ -60,11 +60,11 @@ expect:
   detection: none
 
 verify:
-  - kind: console
-    label: a sensor update policy references the lab group
-    path: /policies/sensor-update
-    api_match: /api2/
-    expect_contains: "Falcon Lab"
+  - kind: api
+    label: a sensor update policy is assigned to the Falcon Lab group
+    assert: policy_group
+    policy: sensor_update
+    group: "Falcon Lab"
   - kind: attest
     label: understanding
     items:
@@ -74,7 +74,8 @@ verify:
       - "I know why the host did not downgrade when I changed the policy"
 
 hint: >
-  If the console check cannot find "Falcon Lab" on the sensor update policies page, the policy
-  may exist but not be assigned to that group — assignment is a separate step from creation,
-  and it is the step people forget. Confirm on the host detail panel which update policy each
-  guest is actually receiving.
+  The check resolves "Falcon Lab" to a group ID and then looks for a sensor update policy whose
+  assigned groups contain it — so creating the policy is not enough, and neither is seeing the
+  group's name somewhere on the policies page. Assignment is a separate step from creation, and
+  it is the step people forget. Confirm on the host detail panel which update policy each guest
+  is actually receiving.

@@ -253,6 +253,18 @@ def _check_api(s, v):
         if not hn:
             return {"ok": None, "reason": "api host_count check needs 'hostname'"}
         return falcon.visible_host_count_is(hn, v.get("equals", 1))
+    if assertion == "host_group":
+        grp = v.get("group")
+        if not grp:
+            return {"ok": None, "reason": "api host_group check needs 'group'"}
+        return falcon.host_group_exists(grp)
+    if assertion == "hosts_matching":
+        pat = v.get("contains")
+        if not pat:
+            return {"ok": None, "reason": "api hosts_matching check needs 'contains'"}
+        return falcon.visible_hosts_matching(pat, v.get("at_least", 1))
+    if assertion == "ioc_exists":
+        return falcon.custom_ioc_exists(v.get("value_contains"), v.get("type"), v.get("action"))
     if assertion == "ioa_group_enabled":
         grp = v.get("group")
         if not grp:

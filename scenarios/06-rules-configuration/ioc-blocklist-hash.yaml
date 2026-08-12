@@ -63,10 +63,10 @@ expect:
   detection: A custom-IOC detection naming your indicator, on falcon-lab-win
 
 verify:
-  - kind: console
-    label: a custom IOC exists
-    path: /iocs
-    api_match: /api2/
+  - kind: api
+    label: a custom SHA256 IOC exists
+    assert: ioc_exists
+    type: sha256
   - kind: endpoint
     label: the marker file exists to be matched
     shell: |
@@ -80,7 +80,9 @@ verify:
       - "I can explain why a one-byte change defeats a hash IOC"
 
 hint: >
-  The console check confirms the IOC page returned data; it cannot tell whose indicator is
-  whose without knowing your description, so the substantive claims are attested. If the
-  endpoint check says the marker file is missing, prevention may have quarantined it — which
-  is a pass in spirit, and worth noting as the exercise working rather than failing.
+  The check asks the IOC API for a custom indicator of type sha256; it cannot tell whose
+  indicator is whose without knowing your description, so the substantive claims stay attested.
+  It needs the API key's IOC Management read scope — without it the check reports that it could
+  not look, which is never a pass. If the endpoint check says the marker file is missing,
+  prevention may have quarantined it — which is a pass in spirit, and worth noting as the
+  exercise working rather than failing.

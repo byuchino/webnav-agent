@@ -48,11 +48,10 @@ expect:
   detection: none
 
 verify:
-  - kind: console
+  - kind: api
     label: Falcon Lab group exists
-    path: /host-management/host-groups
-    api_match: /api2/
-    expect_contains: "Falcon Lab"
+    assert: host_group
+    group: "Falcon Lab"
   - kind: attest
     label: understanding
     items:
@@ -61,6 +60,8 @@ verify:
       - "I can describe a dynamic rule that would capture both, and its failure mode"
 
 hint: >
-  If the console check cannot find "Falcon Lab", check the name matches exactly — the check
-  is a literal substring match on what the console's API returned. If it reports that no API
-  response matched, the session has likely expired.
+  The check resolves the group NAME to an ID through the Falcon API, so the name must match
+  exactly — including case and spacing. A group that merely appears on the page (in a filter
+  chip, a recent-activity row, another policy's assignment list) no longer counts; it has to
+  actually exist. If the check reports it could not look at all, the API key is missing or
+  lacks the Host Groups read scope — that is never a pass.

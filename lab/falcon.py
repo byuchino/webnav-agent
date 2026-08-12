@@ -165,7 +165,7 @@ def _clients():
     try:
         from falconpy import (OAuth2, HostGroup, ResponsePolicies, PreventionPolicy,
                               SensorUpdatePolicy, Hosts, CustomIOA, Alerts, MLExclusions,
-                              Quarantine)
+                              Quarantine, IOC)
     except ImportError:
         _API["c"] = None
         _API["why"] = "falconpy is not installed (pip install crowdstrike-falconpy)"
@@ -178,6 +178,7 @@ def _clients():
                      "alerts": Alerts(auth_object=auth),
                      "ml_exclusions": MLExclusions(auth_object=auth),
                      "quarantine": Quarantine(auth_object=auth),
+                     "ioc": IOC(auth_object=auth),
                      "response": ResponsePolicies(auth_object=auth),
                      "prevention": PreventionPolicy(auth_object=auth),
                      "sensor_update": SensorUpdatePolicy(auth_object=auth)}
@@ -272,6 +273,88 @@ def visible_host_count_is(hostname, equals):
         n = len(((r.get("body") or {}).get("resources")) or [])
         return {"ok": n == equals,
                 "reason": f"{n} visible host(s) named {hostname!r} (expected {equals})"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
+def host_group_exists(name):
+    """Does a host group named `name` exist? (Host Groups read scope.)
+
+    The console check this replaces asserted only that the string "Falcon Lab" appeared somewhere
+    on the host-groups page -- which a *deleted* group still satisfies if its name lingers in a
+    filter chip or a recent-activity row. Resolving the name to an ID is the real question.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        gid = _resolve_group_id(clients, name)
+        if gid is None:
+            return {"ok": False, "reason": f"no host group named {name!r} exists"}
+        return {"ok": True, "reason": f"host group {name!r} exists (id {gid[:8]}...)"}
+    except ConsoleUnavailable as e:
+        return {"ok": None, "reason": str(e)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
+def visible_hosts_matching(contains, at_least=1):
+    """Are at least `at_least` VISIBLE hosts' names matching *contains*?
+
+    Wildcard FQL rather than a client-side scan: a real CID may hold far more devices than the
+    500-row page the group lookups get away with. Hidden hosts are excluded, so this reports what
+    Host management would actually show.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        r = clients["hosts"].query_devices_by_filter(
+            filter=f"hostname:*'*{contains}*'", limit=500)
+        if r.get("status_code") != 200:
+            return {"ok": None, "reason": f"devices read failed (HTTP {r.get('status_code')}) -- "
+                    f"check the key's Hosts read scope"}
+        n = len(((r.get("body") or {}).get("resources")) or [])
+        return {"ok": n >= at_least,
+                "reason": f"{n} visible host(s) matching {contains!r} (expected at least "
+                          f"{at_least})"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
+def custom_ioc_exists(value_contains=None, ioc_type=None, action=None):
+    """Is there a custom IOC, optionally matching value/type/action? (IOC Management read scope.)
+
+    All three filters are optional and AND together, so the scenario decides how specific to be:
+    "any IOC at all" is a weak but honest check, "this hash, blocking" is the real one.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        r = clients["ioc"].indicator_combined(limit=500)
+        if r.get("status_code") != 200:
+            return {"ok": None, "reason": f"IOC read failed (HTTP {r.get('status_code')}) -- "
+                    f"check the key's IOC Management read scope"}
+        rows = (r.get("body") or {}).get("resources") or []
+        want = []
+        if value_contains:
+            want.append(f"value containing {value_contains!r}")
+            rows = [i for i in rows
+                    if value_contains.lower() in (i.get("value") or "").lower()]
+        if ioc_type:
+            want.append(f"type {ioc_type!r}")
+            rows = [i for i in rows if (i.get("type") or "") == ioc_type]
+        if action:
+            want.append(f"action {action!r}")
+            rows = [i for i in rows if (i.get("action") or "") == action]
+        desc = " and ".join(want) if want else "any type"
+        if rows:
+            top = rows[0]
+            return {"ok": True, "reason": f"{len(rows)} custom IOC(s) with {desc} "
+                    f"(e.g. {top.get('type')} {(top.get('value') or '')[:24]} "
+                    f"-> {top.get('action')})"}
+        return {"ok": False, "reason": f"no custom IOC with {desc} exists"}
     except Exception as e:  # noqa: BLE001
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
 

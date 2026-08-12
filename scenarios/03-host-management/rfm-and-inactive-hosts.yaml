@@ -53,11 +53,11 @@ verify:
   - kind: sensor
     label: linux sensor not in RFM
     target: lnx
-  - kind: console
-    label: host management shows the lab hosts
-    path: /host-management/hosts
-    api_match: /api2/
-    expect_contains: "falcon-lab"
+  - kind: api
+    label: host management shows both lab hosts
+    assert: hosts_matching
+    contains: "FALCON-LAB"
+    at_least: 2
   - kind: attest
     label: filtering and retention
     items:
@@ -67,6 +67,6 @@ verify:
 
 hint: >
   The sensor check reads RFM state directly from the host, so it is authoritative regardless
-  of what the console shows. If the console check cannot find "falcon-lab", either the page
-  did not return host data (session expired?) or your hosts are not visible to the account
-  you signed in with.
+  of what the console shows. The API check counts VISIBLE hosts matching "FALCON-LAB" — hidden
+  hosts are excluded, so a host you hid during the stale-host exercise will not be counted, and
+  fewer than two means one is hidden, deleted, or never enrolled rather than merely offline.

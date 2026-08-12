@@ -100,11 +100,11 @@ expect:
   detection: none
 
 verify:
-  - kind: console
+  - kind: api
     label: a response policy is assigned to the Falcon Lab group
-    path: /policies/response
-    api_match: /api2/
-    expect_contains: "Falcon Lab"
+    assert: policy_group
+    policy: response
+    group: "Falcon Lab"
   - kind: endpoint
     label: "(functional) run executed a binary — C:\\rtr-run-proof was created on the host"
     shell: "if (Test-Path 'C:\\rtr-run-proof') { 'present' } else { 'absent' }"
@@ -126,6 +126,9 @@ hint: >
   console check passes but the functional check says 'absent', the policy is assigned but the
   binary did not execute — most often run is still disabled, the policy has not landed, or you
   ran it in a session that predates the change. Re-grade after C:\rtr-run-proof is created.
+  Note the policy check verifies ASSIGNMENT to the Falcon Lab group, not that `run` is enabled
+  within that policy — the two are separate settings, and only the functional check proves the
+  second one.
 
   A confusing gotcha worth knowing: RTR provisions your command set from your ROLE + the
   response policy, so a command you are not entitled to appears as **"Command not found"**, NOT
