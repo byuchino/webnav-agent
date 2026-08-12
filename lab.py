@@ -186,8 +186,14 @@ def cmd_sensor(a):
 def cmd_web(a):
     import uvicorn
     from lab.web import app
-    print(f"lab panel on http://0.0.0.0:{a.port}")
-    uvicorn.run(app, host="0.0.0.0", port=a.port, log_level="warning")
+    # Loopback by default: the panel has no auth of its own, and /api/term is a shell on the
+    # guests. Anything that publishes it -- a tunnel, a reverse proxy -- must put auth in front,
+    # and those all connect from localhost anyway. Binding every interface adds a second,
+    # unguarded door on the LAN that bypasses whatever is guarding the first one.
+    print(f"lab panel on http://{a.host}:{a.port}")
+    if a.host != "127.0.0.1":
+        print(f"  !! {a.host} exposes an unauthenticated admin shell to that network")
+    uvicorn.run(app, host=a.host, port=a.port, log_level="warning")
 
 
 def main():
@@ -243,6 +249,9 @@ def main():
 
     s = sub.add_parser("web", help="serve the control panel")
     s.add_argument("--port", type=int, default=8901)
+    s.add_argument("--host", default="127.0.0.1",
+                   help="bind address (default loopback; 0.0.0.0 exposes an unauthenticated "
+                        "admin shell to the whole network)")
     s.set_defaults(fn=cmd_web)
 
     a = p.parse_args()
