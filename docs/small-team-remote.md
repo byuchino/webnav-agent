@@ -102,6 +102,39 @@ strictly $0 / no domain → Tailscale node-share + tight ACLs + terminal, and bu
 auth yourself. Lean: **Cloudflare** for this use — edge person-auth is exactly what the threat
 model needs.
 
+### Order of operations is safety-critical
+
+The two halves of "Cloudflare Tunnel + Access" are separate products, created in separate steps,
+and **the tunnel half is the one that grants access**. A tunnel with a DNS route and no Access
+application is not a half-finished deployment — it is a fully working, fully public one. There is
+no default-deny anywhere in the chain: `cloudflared` dials out, the proxied CNAME resolves for
+everyone, and the panel has no auth of its own to fall back on.
+
+This bit us on 2026-08-12. The tunnel was created (06:36), routed to `falconlab.frame10.com`
+(06:46), and the connector came up (06:54); the session ended before the Access application was
+made. For ~17 minutes `https://falconlab.frame10.com/api/term/win` served an **Administrator
+PowerShell on `falcon-lab-win`** to anyone on the internet, no credentials required — the in-panel
+terminal working exactly as designed, just with the auth layer absent. `/api/scenarios` answered
+publicly too. Closed by deleting the DNS record (the tunnel itself was left running), then
+resolved properly: Access application created, DNS restored, and enforcement verified from an
+unauthenticated client — `/`, `/api/scenarios`, and the `/api/term/*` websocket all now `302` to
+the `tenpin.cloudflareaccess.com` login instead of serving.
+
+So the required sequence is **Access application first, DNS route last**:
+
+1. Create the tunnel and its ingress. Harmless — a tunnel with no hostname routed to it is
+   unreachable.
+2. Create the Access application for the hostname, with its policy. Access can be attached to a
+   hostname that has no DNS record yet, so this genuinely can come first.
+3. Only then add the proxied CNAME.
+4. Verify with an **unauthenticated** client — `curl -sI` should return a redirect to the Access
+   login, not `200`. Do not treat "the dashboard shows an app" as verification.
+
+The generalisable rule: the terminal made the panel a single exposed surface, which is what made
+a tunnel sufficient — but it also means **one hostname is now a shell on the guests**. Anything
+that publishes that hostname must not be a step that can be left half-done. Never route DNS to
+the tunnel until the policy in front of it is proven to enforce.
+
 ## Read
 
 Achievable **without touching the lab's core** — no scenario templating, no namespacing, no extra
