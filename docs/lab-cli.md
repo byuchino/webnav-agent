@@ -267,6 +267,7 @@ only these **read** scopes — it cannot change anything:
 | Alerts | `detection_contains` (IOA fired) |
 | Machine Learning Exclusions | `ml_exclusion` |
 | Quarantined Files | `quarantined_file` |
+| IOC Management | `ioc_exists` (added 2026-08-12; without it the check reports "could not look") |
 
 **`kind: api` asserts** (in a scenario's `verify` list):
 
@@ -283,7 +284,19 @@ only these **read** scopes — it cannot change anything:
   assert: ml_exclusion        # path_contains: "<token>" + group: "<name>"
 - kind: api
   assert: quarantined_file    # hostname: "<name>" + name_contains: "<token>"
+- kind: api
+  assert: host_group          # group: "<name>"  — the group exists (name resolves to an id)
+- kind: api
+  assert: hosts_matching      # contains: "<token>" + at_least: <n>  (visible hosts, wildcard FQL)
+- kind: api
+  assert: ioc_exists          # value_contains / type / action, all optional and ANDed
 ```
+
+`host_group`, `hosts_matching` and `ioc_exists` were added on 2026-08-12 to migrate five
+`kind: console` checks off the browser. Each replaced a substring match on a rendered page with
+a structured question, and the difference is not cosmetic: `sensor-update-pinning` had been
+passing on the mere presence of the string "Falcon Lab" on the sensor-update policies page, and
+correctly reports NOT YET now that the check asks whether a policy is *assigned* to that group.
 
 Two implementation notes worth keeping: group/host **names are resolved client-side** (the FQL
 `name:'…'` filter returned null for a group that plainly exists), and API responses can carry
@@ -297,11 +310,25 @@ somewhere that can reach both the hypervisor and `10.77.0.0/24`, and if console 
 work it also needs `CDP_PORT` pointing at a browser signed in to Falcon:
 
 ```bash
-CDP_PORT=9333 ./lab.py web        # then http://<this-host>:8901
+CDP_PORT=9333 ./lab.py web        # then http://127.0.0.1:8901
 ```
 
+It binds **loopback** by default — the panel has no auth of its own and `/api/term/{host}` is a
+shell on the guests, so publishing it is the job of a layer that authenticates (see
+`deployment.md`). `--host 0.0.0.0` is there for the deliberate case and says what it costs.
+
+In the real deployment the panel is not run this way at all; it is a systemd service in the
+controller LXC. **`deployment.md` is the file to read** before trying to find or update a
+running panel.
+
 Scenarios are grouped by CCFA domain, each card showing its objective, verification kinds and
-prerequisites. Grading renders every check individually rather than a single verdict, so a
+prerequisites. Each card also carries a **terminal** button for the guest that exercise uses, so
+a shell is one click from the instructions rather than a scroll back to the Hosts section. Which
+guest that is comes from the scenario itself — its `target`, plus any guest named by an
+individual check, so a `target: console` exercise that verifies something on a guest (the IOC one
+runs a `Test-Path` on `win`; `rfm-and-inactive-hosts` reads sensor state from `lnx`) still offers
+the right shell. Console-only exercises get no button, and an unreachable guest disables it with
+the reason rather than opening a window that only prints an SSH failure. Grading renders every check individually rather than a single verdict, so a
 mixed result is legible at a glance:
 
 ```
