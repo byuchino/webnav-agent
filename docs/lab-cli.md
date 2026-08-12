@@ -22,7 +22,7 @@ Every guest has two snapshots, and every scenario declares which one it needs:
 |---|---|---|
 | `bare` | `clean-preSensor` / `clean-cloudinit` | the sensor-installation exercises |
 | `sensor` | `clean-withSensor` | everything else |
-| `rfm` (lnx) | `clean-rfm` | the Reduced Functionality Mode exercise |
+| `rfm` (lnx **and win**) | `clean-rfm` | the Reduced Functionality Mode exercises |
 
 The `rfm` baseline exists so that "put a host in RFM" is a button rather than an afternoon.
 Constructing it was not obvious: **booting an unsupported kernel is not enough.** A current
@@ -36,8 +36,10 @@ rfm-state=true.
 rfm-reason=Modules file was not found, code=0xC0000034.
 ```
 
-**Why there is no Windows RFM baseline.** RFM applies on Windows too, but it could not be
-induced here the way Linux was, and the investigation is worth recording so it is not repeated:
+**Why there was no Windows RFM baseline for four days.** RFM applies on Windows too, but it
+could not be induced *deliberately* the way Linux was. The investigation is kept because its
+conclusions about mechanism are still right — and because the thing that finally produced RFM
+was none of them (see the correction below; the baseline now exists, taken 2026-08-12):
 
 - The only cause the harvested docs document is an **unsupported OS build** (Windows Insider /
   beta), which is not practical to stage in the lab.
@@ -80,9 +82,17 @@ Windows does not. There is also no local Windows RFM read — unlike `falconctl 
 > healthy while the sensor collects almost nothing — which is the entire point of the RFM
 > teaching topic, now demonstrable on Windows rather than merely described.
 >
-> **A `win` `rfm` baseline is therefore available for the first time** — the guest is sitting in
-> the state, so snapshotting it captures what could not previously be built. It is perishable:
-> reverting `win` to `clean-withSensor`, or updating the sensor, throws the state away.
+> **The `win` `rfm` baseline was captured the same day**, before a revert or a sensor update
+> could throw the state away — `clean-rfm` on VM 900, taken with the guest shut down, registered
+> in `config.py` so the panel offers the revert button. The Windows guest now has three
+> baselines like the Linux one, and the host still reported `rfm=yes` after the snapshot reboot.
+>
+> Two things follow. **`clean-withSensor` for `win` is a pre-RFM snapshot** (taken 8/09, healthy),
+> so reverting to it is how you get a *non*-RFM Windows host back — the two snapshots are now a
+> matched pair, healthy and degraded, which is what makes RFM demonstrable rather than described.
+> And **this baseline will drift**: reverting to `clean-rfm` restores a sensor that is further
+> behind with every passing month. That is fine for teaching RFM, and wrong for anything that
+> needs a current sensor.
 
 **RFM detection is server-side and platform-agnostic.** Confirmed against CrowdStrike's own SDK
 (`~/falconpy`, `samples/hosts/rfm_report.py`): every device record carries a

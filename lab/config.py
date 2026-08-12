@@ -35,7 +35,14 @@ HOSTS = {
         "ip": "10.77.0.10",
         "user": "labadmin",
         "name": "falcon-lab-win",
-        "snapshots": {"bare": "clean-preSensor", "sensor": "clean-withSensor"},
+        # `rfm` exists on Windows after all. It was written off as impractical to stage --
+        # tamper protection blocks stopping any CS component -- but on 2026-08-12 Windows
+        # Update walked the build to 26100 UBR 9168, past what the pinned N-2 sensor 7.40
+        # supports, and the host fell into RFM unaided. Running an old sensor on a
+        # self-patching OS IS the staging mechanism. Snapshotted before it could be lost to
+        # a revert or a sensor update.
+        "snapshots": {"bare": "clean-preSensor", "sensor": "clean-withSensor",
+                      "rfm": "clean-rfm"},
         # Windows has no ICMP by default -- never test liveness with ping.
         "probe_port": 22,
     },
