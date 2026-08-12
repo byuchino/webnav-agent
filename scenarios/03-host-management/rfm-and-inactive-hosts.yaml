@@ -19,6 +19,8 @@ teaches: |
   - What causes it — most often a kernel the installed sensor version does not support
   - How to filter Host Management to surface RFM hosts and inactive sensors
   - How long an inactive sensor is retained before it disappears
+  - That asking the HOST about RFM is platform-specific and on Windows impossible, so the
+    console/API field `reduced_functionality_mode` is the only answer that works fleet-wide
 
 instructions: |
   Console work, with one thing to verify on the Linux guest.
@@ -34,13 +36,39 @@ instructions: |
      the exam asks for the number, and knowing where it is stated is more durable than
      memorising it.
 
-  3. Confirm your own lab hosts are NOT in RFM, from the host itself:
-         ssh -i ~/.ssh/falcon_lab_ed25519 labadmin@10.77.0.11 \
-           'sudo /opt/CrowdStrike/falconctl -g --rfm-state'
+  3. Confirm your own lab hosts are NOT in RFM — and learn why "ask the host" is not a
+     strategy that survives a mixed fleet.
+
+     On the **Linux** host: press **terminal** on the `falcon-lab-lnx` card (or this card's
+     Linux terminal button) and run:
+         sudo /opt/CrowdStrike/falconctl -g --rfm-state
 
      Note the output format. It prints with a trailing period — `rfm-state=false.` — which
      is exactly the sort of detail that breaks a naive string comparison. This lab's own
      grader had that bug and reported a healthy sensor as being in RFM.
+
+     On the **Windows** host: press **terminal** on the `falcon-lab-win` card and look for
+     the equivalent. There isn't one. This is the point of the step, not a gap in it:
+
+       - there is no `falconctl` on Windows at all
+       - `CSSensorSettings.exe` — the closest thing — only gets and sets proxy settings,
+         grouping tags and `--no-rtr`. Run `& "C:\Program Files\CrowdStrike\CSSensorSettings.exe"
+         --help` and read the list; RFM is not on it
+       - `sc query csagent` shows the kernel driver RUNNING, which looks like an answer and
+         is not one. RFM is about the sensor running *without a matching kernel module*, so a
+         service that is up tells you nothing about whether it is functional
+
+     On **macOS** (when the Mac guest joins the lab) there is a falconctl again, at
+     `/Applications/Falcon.app/Contents/Resources/falconctl` — a different binary with a
+     different subcommand set from the Linux one. Treat its RFM output as unverified until
+     someone has run it here; this lab has not.
+
+     So: three platforms, three different answers, one of which is "you cannot ask". The
+     only question that works everywhere is the one you asked in step 1 — the console's RFM
+     column, backed by the device field `reduced_functionality_mode` (`yes`/`no`/`unknown`).
+     The sensor reports its own state upward, so the cloud knows even when the host offers
+     no way to ask locally. That is why this scenario's automated RFM check goes through the
+     API and not through a shell, and why it will cover the Mac the day it appears.
 
   4. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
          lab grade rfm-and-inactive-hosts
@@ -51,8 +79,12 @@ expect:
 
 verify:
   - kind: sensor
-    label: linux sensor not in RFM
+    label: linux sensor not in RFM (host-side, falconctl)
     target: lnx
+  - kind: api
+    label: windows sensor not in RFM (cloud-side, no host command exists)
+    assert: rfm_state
+    target: win
   - kind: api
     label: host management shows both lab hosts
     assert: hosts_matching
@@ -66,7 +98,10 @@ verify:
       - "I found the inactive-sensor retention period and can say where it is documented"
 
 hint: >
-  The sensor check reads RFM state directly from the host, so it is authoritative regardless
-  of what the console shows. The API check counts VISIBLE hosts matching "FALCON-LAB" — hidden
+  The two RFM checks deliberately disagree about method. The Linux one reads state directly
+  from the host with falconctl, so it is authoritative regardless of what the console shows.
+  The Windows one has to go through the API, because no host-side query exists — and that is
+  the check that would still work on a Mac, or on a host you have no shell for at all.
+  The remaining API check counts VISIBLE hosts matching "FALCON-LAB" — hidden
   hosts are excluded, so a host you hid during the stale-host exercise will not be counted, and
   fewer than two means one is hidden, deleted, or never enrolled rather than merely offline.

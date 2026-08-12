@@ -280,6 +280,18 @@ def _check_api(s, v):
         if not path:
             return {"ok": None, "reason": "api ml_exclusion check needs 'path_contains'"}
         return falcon.ml_exclusion_exists(path, v.get("group"))
+    if assertion == "rfm_state":
+        # `target: win|lnx|mac` is the normal form -- it names the guest in lab terms, resolves
+        # to that host's Falcon hostname, and is also what puts the right terminal button on the
+        # scenario card. `hostname:` stays available for a host the lab does not own.
+        hn = v.get("hostname")
+        if not hn:
+            t = v.get("target")
+            if t not in config.HOSTS:
+                return {"ok": None, "reason": "api rfm_state check needs 'target' (a lab guest) "
+                                              "or 'hostname'"}
+            hn = config.HOSTS[t]["name"]
+        return falcon.rfm_state(hn, v.get("expect", "no"))
     if assertion == "quarantined_file":
         hn = v.get("hostname")
         if not hn:

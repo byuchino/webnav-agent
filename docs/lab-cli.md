@@ -59,6 +59,31 @@ Linux needed a kernel/module mismatch to reach it and why stopping a user-space 
 Windows does not. There is also no local Windows RFM read — unlike `falconctl -g --rfm-state`,
 `CSSensorSettings.exe` exposes only proxy/tags/rtr.
 
+> **Correction, 2026-08-12: Windows RFM induced itself, for free.** The conclusion above —
+> "not practical to stage in the lab" — was wrong about the *effort*, right about the mechanism.
+> `FALCON-LAB-WIN` is now reporting `reduced_functionality_mode: yes` with nobody having tried
+> to put it there. The evidence lines up exactly with the documented cause:
+>
+> | | |
+> |---|---|
+> | Sensor | 7.40.21306.0 (N-2, pinned deliberately) |
+> | OS build | Windows 11 26100, **UBR 9168** |
+> | Last updates | KB5121003 (8/12), KB5123304 + KB5120710 (8/11) |
+> | Enrolled healthy | 8/09 — the `clean-withSensor` baseline was built from a non-RFM host |
+>
+> A Windows cumulative update walked the kernel build past what the pinned N-2 sensor supports,
+> which is the same kernel/module mismatch Linux needed a hand-built kernel to reach. Running a
+> deliberately old sensor on an OS that patches itself **is** the staging mechanism.
+>
+> Note what this costs the naive checks: `sc query csagent` reports the driver **RUNNING** on
+> this host right now, and `CSFalconService` is Running too. Every host-side signal looks
+> healthy while the sensor collects almost nothing — which is the entire point of the RFM
+> teaching topic, now demonstrable on Windows rather than merely described.
+>
+> **A `win` `rfm` baseline is therefore available for the first time** — the guest is sitting in
+> the state, so snapshotting it captures what could not previously be built. It is perishable:
+> reverting `win` to `clean-withSensor`, or updating the sensor, throws the state away.
+
 **RFM detection is server-side and platform-agnostic.** Confirmed against CrowdStrike's own SDK
 (`~/falconpy`, `samples/hosts/rfm_report.py`): every device record carries a
 `reduced_functionality_mode` field (value `yes` / `no` / `unknown`), and it is an FQL filter key
@@ -261,7 +286,7 @@ only these **read** scopes — it cannot change anything:
 | Scope (exact console label) | Used by |
 |---|---|
 | Host Groups | group-name→id resolution (all `policy_group` checks) |
-| Hosts | `host_count` (duplicate/stale-host dedup) |
+| Hosts | `host_count` (duplicate/stale-host dedup), `hosts_matching`, `rfm_state` |
 | Response / Prevention / Sensor update Policies | `policy_group` per type |
 | Custom IOA Rules | `ioa_group_enabled` |
 | Alerts | `detection_contains` (IOA fired) |
@@ -290,7 +315,36 @@ only these **read** scopes — it cannot change anything:
   assert: hosts_matching      # contains: "<token>" + at_least: <n>  (visible hosts, wildcard FQL)
 - kind: api
   assert: ioc_exists          # value_contains / type / action, all optional and ANDed
+- kind: api
+  assert: rfm_state           # target: win|lnx|mac (or hostname:) + expect: no|yes
 ```
+
+### `rfm_state`, and why RFM cannot be graded from the host
+
+Added 2026-08-12. `target:` names a lab guest in the lab's own terms (`win`/`lnx`), which
+resolves to that host's Falcon hostname *and* puts the right terminal button on the scenario
+card; `hostname:` is the escape hatch for a host the lab does not own. `expect: yes` inverts it,
+which is what an "induce RFM" exercise wants.
+
+It reads the device field `reduced_functionality_mode` (`yes`/`no`/`unknown`); `unknown` grades
+`None`, never a fail, because an older sensor that never populated the field is not evidence of
+a problem. Results are keyed by **device id, not hostname** — this CID carries a stale duplicate
+`FALCON-LAB-WIN`, and keying by name would collapse two AIDs into one verdict and could report
+the healthy twin while hiding the one in RFM.
+
+The reason this has to go through the API is that **asking the host is platform-specific, and on
+Windows impossible.** Verified on the lab guests, not assumed:
+
+| | Host-side RFM query |
+|---|---|
+| Linux | `sudo /opt/CrowdStrike/falconctl -g --rfm-state` → `rfm-state=false.` (trailing period) |
+| Windows | **none exists.** There is no `falconctl`. `CSSensorSettings.exe --help` lists only proxy settings, grouping tags and `--no-rtr`. `sc query csagent` shows the driver RUNNING *while the host is in RFM*, so it is a false comfort, not an answer |
+| macOS | a different `falconctl` at `/Applications/Falcon.app/Contents/Resources/falconctl`; its RFM output is **unverified here** — no Mac guest yet |
+
+The harvested docs corpus is thin on RFM but settles that it is not Linux-only: *"Network
+containment is supported on Windows and macOS hosts running the Falcon sensor in RFM."* So the
+cloud-side field is the only question that works fleet-wide — and the only one that will cover
+the Mac guest the day it joins, with no new code.
 
 `host_group`, `hosts_matching` and `ioc_exists` were added on 2026-08-12 to migrate five
 `kind: console` checks off the browser. Each replaced a substring match on a rendered page with

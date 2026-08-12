@@ -277,6 +277,55 @@ def visible_host_count_is(hostname, equals):
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
 
 
+def rfm_state(hostname, expect="no"):
+    """Is this host in Reduced Functionality Mode, per the CLOUD? (Hosts read scope.)
+
+    The only PLATFORM-AGNOSTIC way to ask. Host-side, every OS answers differently and two of
+    the three barely answer at all: Linux has `falconctl -g --rfm-state`, macOS has its own
+    falconctl under Falcon.app, and Windows has NO host-side RFM query whatsoever (verified on
+    the lab guest -- CSSensorSettings.exe does proxy, grouping tags and no-rtr, nothing else,
+    and `sc query csagent` reporting RUNNING does not mean the sensor is out of RFM). The
+    sensor reports its state up regardless, so the device record answers for all three.
+
+    `reduced_functionality_mode` is yes/no/unknown; `unknown` grades as None, not a fail --
+    an older sensor that never populated the field is not evidence of a problem.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        r = clients["hosts"].query_devices_by_filter(
+            filter=f"hostname:*'*{hostname}*'", limit=500)
+        if r.get("status_code") != 200:
+            return {"ok": None, "reason": f"devices read failed (HTTP {r.get('status_code')}) -- "
+                    f"check the key's Hosts read scope"}
+        ids = ((r.get("body") or {}).get("resources")) or []
+        if not ids:
+            return {"ok": None, "reason": f"no visible host matching {hostname!r}"}
+        d = clients["hosts"].get_device_details(ids=ids)
+        devices = ((d.get("body") or {}).get("resources")) or []
+        # Match client-side: FQL's wildcard is broad, and hostname case differs by platform
+        # (Windows registers FALCON-LAB-WIN, Linux falcon-lab-lnx).
+        want = hostname.lower()
+        # Keyed by device id, not hostname: this CID has carried a stale duplicate FALCON-LAB-WIN
+        # from a rollback+reinstall, and keying by name would silently collapse two AIDs into one
+        # verdict -- reporting the healthy twin and hiding the one in RFM.
+        states = [(dev.get("hostname") or "?", (dev.get("device_id") or "")[:8],
+                   dev.get("reduced_functionality_mode") or "unknown")
+                  for dev in devices if want in (dev.get("hostname") or "").lower()]
+        if not states:
+            return {"ok": None, "reason": f"no visible host matching {hostname!r}"}
+        multi = len(states) > 1
+        shown = ", ".join(f"{h}{'/' + aid if multi else ''} rfm={s}"
+                          for h, aid, s in sorted(states))
+        if all(s == "unknown" for _, _, s in states):
+            return {"ok": None, "reason": f"cloud reports RFM state unknown ({shown})"}
+        ok = all(s == expect for _, _, s in states if s != "unknown")
+        return {"ok": ok, "reason": f"{shown} (expected {expect})"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
 def host_group_exists(name):
     """Does a host group named `name` exist? (Host Groups read scope.)
 
