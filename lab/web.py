@@ -169,6 +169,26 @@ async def api_status():
     return JSONResponse(out)
 
 
+def _scenario_hosts(s):
+    """Guests this scenario actually touches, in the order a learner meets them.
+
+    The scenario's own target first, then any guest named by an individual check. The second
+    part matters: a `target: console` exercise can still verify something on a guest -- the IOC
+    one runs a Test-Path on win -- and that guest is exactly the one whose shell the learner
+    wants. Mirrors how _run_checks resolves a check's host, so the buttons cannot drift from
+    what grading actually does.
+    """
+    out = []
+    t = s.get("target")
+    if t and t != "console":
+        out.append(t)
+    for v in s.get("verify") or []:
+        h = v.get("target")
+        if h and h != "console" and h in config.HOSTS and h not in out:
+            out.append(h)
+    return out
+
+
 @app.get("/api/scenarios")
 async def api_scenarios():
     all_ = await _off(scenarios.load_all)
@@ -176,6 +196,7 @@ async def api_scenarios():
     for s in sorted(all_.values(), key=lambda x: (x.get("domain", 0), x["id"])):
         d = {k: v for k, v in s.items() if k not in ("steps", "setup")}
         d["kinds"] = sorted({v["kind"] for v in (s.get("verify") or [])})
+        d["hosts"] = _scenario_hosts(s)
         d["domain_name"] = DOMAINS.get(s.get("domain", 0), "?")
         d["prep"] = scenarios.prep_steps(s)
         out.append(d)
@@ -291,8 +312,25 @@ function sensorClass(v){
 }
 const MARK = {true:['ok','ok'], false:['FAIL','bad'], null:['--','dim']};
 
+// Reachability is learned from /api/status, which the exercise cards do not fetch. Keep it in
+// one place so a per-exercise terminal button can say "that guest is down" instead of opening a
+// window that just prints an SSH failure.
+window.HOSTS_UP = {};
+function markTerms(){
+  document.querySelectorAll('.term-btn').forEach(b => {
+    const h = b.dataset.host;
+    if(!(h in window.HOSTS_UP)) return;      // not known yet -- leave the button alone
+    const up = window.HOSTS_UP[h];
+    b.disabled = !up;
+    b.title = up ? `Open an SSH terminal to ${h} in its own window`
+                 : `${h} is not reachable — start or revert it in Hosts above, then reload`;
+  });
+}
+
 async function loadHosts(){
   const r = await (await fetch('/api/status')).json();
+  r.forEach(h => { window.HOSTS_UP[h.host] = !!h.reachable; });
+  markTerms();
   $('#hosts').innerHTML = '<h2>Hosts</h2>' + r.map(h => `
     <div class="card"><div class="row">
       <span class="name">${esc(h.host)}</span>
@@ -340,6 +378,11 @@ async function loadScen(){
         <button class="primary" onclick="run('${s.id}',this)">
           ${s.mode==='auto'?'run':'set up'}</button>
         <button onclick="grade('${s.id}',this)">grade</button>
+        ${/* after the primary actions: an extra button before them wrapped set up/grade onto a
+             second line on longer titles. Bare "terminal" unless the exercise touches more than
+             one guest -- the target pill already names the single-host case. */
+          (s.hosts||[]).map(h=>`<button class="term-btn" data-host="${esc(h)}"
+          onclick="openTerm('${h}')">terminal${s.hosts.length>1?': '+esc(h):''}</button>`).join('')}
       </div>
       <div class="meta" style="margin-top:5px">${esc(s.summary||'')}</div>
       <details class="prep"><summary>what pressing
@@ -355,6 +398,7 @@ async function loadScen(){
     </div>`;
   }
   $('#scen').innerHTML = html;
+  markTerms();   // cards are rebuilt on every load; re-apply whatever reachability we know
 }
 
 function box(id, inner){ $('#out-'+id).innerHTML = inner; }
