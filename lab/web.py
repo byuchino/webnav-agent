@@ -270,13 +270,6 @@ PAGE = r"""
   details.prep summary{cursor:pointer;user-select:none}
   details.prep ul{margin:6px 0 0;padding-left:20px}
   details.prep li{padding:1px 0}
-  #termwrap{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;
-    align-items:center;justify-content:center}
-  #termbox{width:min(1000px,94vw);height:min(640px,86vh);background:#0d1117;border-radius:8px;
-    border:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
-  #termbar{display:flex;align-items:center;gap:10px;padding:7px 12px;background:#161b22;color:#e6e9ee}
-  #termbar .warnpill{font-size:11px;color:#d9a44a}
-  #term{flex:1;padding:6px 8px;min-height:0}
 </style>
 <div class="wrap">
   <h1>Falcon lab</h1>
@@ -284,13 +277,6 @@ PAGE = r"""
     what is actually true &mdash; a check that could not run is never a pass.</div>
   <div id="hosts"></div>
   <div id="out-hosts-log"></div>
-  <div id="termwrap"><div id="termbox">
-    <div id="termbar"><span>SSH terminal &mdash; <span class="mono" id="termhost"></span></span>
-      <span class="warnpill">runs commands on the guest</span>
-      <span class="spacer"></span>
-      <button onclick="closeTerm()">close</button></div>
-    <div id="term"></div>
-  </div></div>
   <div id="scen"></div>
 </div>
 <script>
@@ -489,38 +475,61 @@ async function grade(id, btn){
   loadHosts();
 }
 
-// --- SSH terminal (xterm.js over a websocket to a server-side PTY) ---
-let TERM=null, TWS=null, TFIT=null, TRESIZE=null;
-function sendResize(){ if(TWS&&TWS.readyState===1&&TERM) TWS.send(JSON.stringify({type:'resize',cols:TERM.cols,rows:TERM.rows})); }
+// --- SSH terminal: opens in its OWN window so it never covers the instructions ---
 function openTerm(host){
-  closeTerm();
-  $('#termwrap').style.display='flex';
-  $('#termhost').textContent = host;
-  TERM = new Terminal({fontSize:13, fontFamily:'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
-                       cursorBlink:true, theme:{background:'#0d1117'}});
-  TFIT = new FitAddon.FitAddon(); TERM.loadAddon(TFIT);
-  TERM.open($('#term')); TFIT.fit();
-  const proto = location.protocol==='https:'?'wss':'ws';
-  TWS = new WebSocket(`${proto}://${location.host}/api/term/${encodeURIComponent(host)}`);
-  TWS.onopen = ()=>{ sendResize(); TERM.focus(); };
-  TWS.onmessage = ev => TERM.write(ev.data);
-  TWS.onclose = ()=>{ if(TERM) TERM.write('\r\n\x1b[33m[disconnected]\x1b[0m\r\n'); };
-  TERM.onData(d => { if(TWS&&TWS.readyState===1) TWS.send(JSON.stringify({type:'input',data:d})); });
-  TRESIZE = ()=>{ if(TFIT){ TFIT.fit(); sendResize(); } };
-  window.addEventListener('resize', TRESIZE);
+  const w = window.open('/terminal/'+encodeURIComponent(host), 'term_'+host,
+                        'width=920,height=580,menubar=no,toolbar=no,location=no,status=no');
+  if(w){ w.focus(); }
+  else { alert('The terminal opens in a new window — allow pop-ups for this page, then retry.'); }
 }
-function closeTerm(){
-  $('#termwrap').style.display='none';
-  if(TRESIZE){ window.removeEventListener('resize', TRESIZE); TRESIZE=null; }
-  if(TWS){ try{TWS.close();}catch(e){} TWS=null; }
-  if(TERM){ try{TERM.dispose();}catch(e){} TERM=null; }
-}
-document.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('#termwrap').style.display==='flex') closeTerm(); });
 
 loadHosts(); loadScen();
 setInterval(loadHosts, 30000);
 </script>
 """
+
+
+TERM_PAGE = r"""<title>terminal — __HOST__</title>
+<link rel="stylesheet" href="/static/xterm.css">
+<script src="/static/xterm.js"></script>
+<script src="/static/xterm-addon-fit.js"></script>
+<style>
+  html,body{margin:0;height:100%;background:#0d1117;overflow:hidden}
+  #bar{height:26px;display:flex;align-items:center;gap:10px;padding:0 10px;background:#161b22;
+    color:#e6e9ee;font:12px/1 ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}
+  #bar .warn{color:#d9a44a;font-size:11px}
+  #bar .st{margin-left:auto;color:#9aa4b2}
+  #term{position:absolute;top:26px;left:0;right:0;bottom:0;padding:4px 6px}
+</style>
+<div id="bar"><b>__HOST__</b> &mdash; SSH terminal
+  <span class="warn">runs commands on the guest</span>
+  <span class="st" id="st">connecting…</span></div>
+<div id="term"></div>
+<script>
+  const host = "__HOST__";
+  const term = new Terminal({fontSize:13, cursorBlink:true,
+    fontFamily:'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace', theme:{background:'#0d1117'}});
+  const fit = new FitAddon.FitAddon(); term.loadAddon(fit);
+  term.open(document.getElementById('term')); fit.fit();
+  const proto = location.protocol==='https:'?'wss':'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/api/term/${encodeURIComponent(host)}`);
+  const st = document.getElementById('st');
+  function resize(){ if(ws.readyState===1) ws.send(JSON.stringify({type:'resize',cols:term.cols,rows:term.rows})); }
+  ws.onopen = ()=>{ st.textContent='connected'; resize(); term.focus(); };
+  ws.onmessage = ev => term.write(ev.data);
+  ws.onclose = ()=>{ st.textContent='disconnected'; term.write('\r\n\x1b[33m[disconnected]\x1b[0m\r\n'); };
+  term.onData(d => { if(ws.readyState===1) ws.send(JSON.stringify({type:'input',data:d})); });
+  window.addEventListener('resize', ()=>{ fit.fit(); resize(); });
+</script>
+"""
+
+
+@app.get("/terminal/{host}", response_class=HTMLResponse)
+async def terminal_page(host: str):
+    """A standalone terminal, opened in its own window so it never covers the instructions."""
+    if host not in config.HOSTS:
+        return HTMLResponse(f"unknown host {host!r}", status_code=404)
+    return HTMLResponse(TERM_PAGE.replace("__HOST__", host))
 
 
 @app.get("/", response_class=HTMLResponse)
