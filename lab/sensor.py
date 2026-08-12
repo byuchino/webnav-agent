@@ -45,7 +45,9 @@ def _verify_windows(name):
         # Linux's `falconctl -g --rfm-state`, CSSensorSettings.exe exposes only proxy/tags/rtr,
         # and the sensor logs nothing to the event log on entering it. Windows RFM is read from
         # the console (Host Management RFM column) or the ZTA signal, so a local check reports
-        # None rather than pretending the state does not exist.
+        # None rather than pretending the state does not exist. The automated equivalent is the
+        # `kind: api` assert `rfm_state` (falcon.rfm_state), which reads the same cloud field for
+        # every platform -- use that, not this, to grade RFM on a Windows or macOS host.
         "rfm": None,
     }
 

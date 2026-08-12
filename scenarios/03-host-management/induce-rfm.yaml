@@ -30,8 +30,14 @@ teaches: |
     prevention, but the RTR response path rides the sensor's cloud channel, which RFM keeps up —
     so a host that falls into RFM is still reachable and remediable
   - What is lost: on Linux, network containment does not work in RFM
-  - That a modern sensor on `auto` avoids RFM entirely by falling back to eBPF user mode —
-    which is why this state had to be constructed deliberately
+  - That a modern LINUX sensor on `auto` avoids RFM by falling back to eBPF user mode — which
+    is why this state had to be constructed deliberately *on Linux*, taking both an unsupported
+    kernel and `falconctl -s --backend=kernel` to remove the user-mode escape route
+  - That the same is NOT true elsewhere: there is no such fallback on Windows, where this lab's
+    guest fell into RFM unaided when a cumulative update took the OS build past what its pinned
+    N-2 sensor supported. Do not generalise "RFM is hard to reach" from the Linux case — on a
+    self-patching OS running a deliberately old sensor, RFM is the default outcome of waiting.
+    Revert `win` to its own `rfm` baseline to see it
 
 setup:
   - name: confirm the guest came back in RFM

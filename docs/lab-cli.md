@@ -101,7 +101,8 @@ on `QueryDevicesByFilter`. The console's RFM column and its RFM filter are exact
 `reduced_functionality_mode:'yes'` — the same field for Windows, Linux and macOS. So Windows RFM
 is *detected* the same way Linux is (from what the sensor reports to the cloud); what differs is
 only that Linux additionally lets you read the state on the box. The `induce-rfm` exercise sends
-you to Host Management's RFM filter, which is that FQL query.
+you to Host Management's RFM filter, which is that FQL query, and the `rfm_state` assert
+(below) is that same field read programmatically — which is why it needs no per-OS branch.
 
 The runner reverts to the declared baseline before doing anything, so an exercise cannot
 silently begin from the wrong state — a sensor-install lesson that started on a host which
