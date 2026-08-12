@@ -68,6 +68,40 @@ has no sensor, so no RTR). A remote user cannot do those unless the VPN also **s
 `10.77.0.0/24`** (Tailscale can), or those exercises stay owner-only. Everything RTR- and
 console-based is fine remotely; the bare-metal ones are the exception.
 
+## Access choice: Tailscale vs Cloudflare Tunnel
+
+The unlock for both is the **in-panel SSH terminal** (below): it makes the panel the *single*
+exposed surface (HTTP/WS only), which removes the need for network-level guest access.
+
+**Tailscale (you already run a personal tailnet for NAS sync):**
+- One tailnet per account — there is no "project tailnet". Reusing the personal tailnet means it
+  also holds your NAS and laptop, so **ACLs become safety-critical** (default-deny, allow only
+  colleague → panel).
+- Add colleagues by **node-sharing** the single panel machine to their *own* free Tailscale
+  account (scoped to that node, does not consume your user seats) — this is the $0 path — rather
+  than inviting them as users into your tailnet.
+- **Caveat 1:** Tailscale authenticates the *network*, not the *app*. Anyone who can reach the
+  panel over the tailnet hits it with **no login**, so you still have to build panel auth (or
+  rely on ACLs + trusting the device). Device-level, not person-level; no session/MFA/revocation.
+- **Caveat 2:** subnet-routing to the guests for a *shared external* user is awkward — solved by
+  the in-panel terminal, which is why that feature matters here.
+
+**Cloudflare Tunnel + Access:**
+- No open ports (`cloudflared` dials out). **Cloudflare Access** puts *person-level* auth at the
+  edge — email allow-list, MFA, session expiry, one-click revocation — which **solves the
+  mandatory panel-auth requirement for free**, the thing Tailscale does not.
+- Total isolation from your personal devices (not a network overlay), so zero blast-radius to the
+  NAS/laptop.
+- Free tier covers well past a couple of users; the one prerequisite/cost is a **domain on
+  Cloudflare** (~$8–10/yr if you do not already have one). Tailscale is truly $0; Cloudflare is
+  $0 *if you already own a domain*.
+
+**Decision:** build the in-panel SSH terminal **regardless**. Then — have a domain → Cloudflare
+Tunnel + Access + terminal (best auth posture, isolates colleagues from personal devices);
+strictly $0 / no domain → Tailscale node-share + tight ACLs + terminal, and build app-level panel
+auth yourself. Lean: **Cloudflare** for this use — edge person-auth is exactly what the threat
+model needs.
+
 ## Read
 
 Achievable **without touching the lab's core** — no scenario templating, no namespacing, no extra
