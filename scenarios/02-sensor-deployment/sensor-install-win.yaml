@@ -25,12 +25,20 @@ instructions: |
      Note your CID with checksum from that page -- it is the CID plus a two-character
      suffix, and the installer needs the whole thing.
 
-  2. Copy the installer onto the host. From your workstation:
-         scp -i ~/.ssh/falcon_lab_ed25519 WindowsSensor.exe labadmin@10.77.0.10:C:/lab/
+  2. Get the installer onto the host. Drop it in the lab's installer directory and let the
+     lab do the transfer — it is the one step a terminal button cannot do for you, since
+     the button gives you a shell ON the guest rather than a copy TO it:
+         ./lab.py sensor stage win
 
-  3. Install it, from an ELEVATED PowerShell on the host
-     (ssh -i ~/.ssh/falcon_lab_ed25519 labadmin@10.77.0.10):
+     It prints the path it landed on. (Moving a file is plumbing; installing it is the
+     exercise, which is why the lab does the first and leaves you the second.)
+
+  3. Press **terminal** on this card to get a PowerShell on falcon-lab-win, and install it
+     yourself — substituting the path step 2 printed:
          & 'C:\lab\WindowsSensor.exe' /install /quiet /norestart CID=<your-cid-with-checksum>
+
+     The installer is silent by design: a successful run prints nothing at all. Add
+     `/log C:\lab\sensor_install.log` if you want to see why a failed one failed.
 
   4. Wait a minute, then check your work — press **grade** on the card in the control panel, or with shell access run:
          lab grade sensor-install-win

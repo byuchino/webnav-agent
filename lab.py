@@ -170,6 +170,12 @@ def cmd_sensor(a):
         found = sensor.installers()
         print("\n".join(f"  {f}" for f in found) if found else
               f"  none staged. Download from the Falcon console into {config.INSTALLER_DIR}")
+    elif a.action == "stage":
+        if not a.host:
+            sys.exit("sensor stage needs a host, e.g. ./lab.py sensor stage lnx")
+        r = sensor.stage(a.host, a.installer)
+        print(f"{a.host:5} staged {r['installer']}")
+        print(f"      {r['remote']}  -- install it yourself from the panel's terminal")
     elif a.action == "install":
         cid = a.ccid or config.ccid()
         if not cid:
@@ -239,7 +245,7 @@ def main():
     s.set_defaults(fn=cmd_grade)
 
     s = sub.add_parser("sensor")
-    s.add_argument("action", choices=["verify", "install", "remove", "installers"],
+    s.add_argument("action", choices=["verify", "stage", "install", "remove", "installers"],
                    nargs="?", default="verify")
     s.add_argument("host", nargs="?", choices=config.GUESTS)
     s.add_argument("--ccid", help="CID with checksum")

@@ -411,10 +411,18 @@ Retrieval can also be automated against a signed-in console session — see
 [Fetching installers automatically](#fetching-installers-automatically) below.
 
 ```
-./lab.py sensor installers      # what is staged
+./lab.py sensor installers      # what is staged locally
+./lab.py sensor stage lnx       # copy onto the guest, do NOT install
 ./lab.py sensor verify          # state of both guests
 ./lab.py -v sensor verify win   # with cid/aid/rfm detail
 ```
+
+`sensor stage` exists for the by-hand install exercises. Those used to print an `scp -i
+~/.ssh/falcon_lab_ed25519 …` line, which put the path to the lab private key in front of every
+learner to accomplish a file copy. Getting the package onto the guest is the one step the
+panel's terminal button genuinely cannot do — the button is a shell *on* the guest, not a copy
+*to* it — so the lab does the transfer and the learner does the install, which was the exercise
+all along. `sensor install` now calls it rather than duplicating the copy.
 
 ### Fetching installers automatically
 

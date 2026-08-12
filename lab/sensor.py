@@ -130,26 +130,51 @@ def installers():
     return sorted(f.name for f in d.iterdir() if f.is_file())
 
 
-def install(name, ccid, installer=None):
-    """Automated install -- used to BUILD the `sensor` baseline, not for the exercise."""
-    h = config.host(name)
+def _pick_installer(h, installer=None):
+    """Resolve a staged installer for this guest's OS, or say what is missing."""
     have = installers()
     if not have:
         raise core.LabError(
             f"no installers staged. Download them from the Falcon console "
             f"(Host setup and management > Sensor downloads) into {config.INSTALLER_DIR}.")
-    if installer is None:
-        want = ".exe" if h["os"] == "windows" else ".deb"
-        cand = [f for f in have if f.lower().endswith(want)]
-        if not cand:
-            raise core.LabError(f"no {want} installer among: {', '.join(have)}")
-        installer = cand[0]
+    if installer is not None:
+        return installer
+    want = ".exe" if h["os"] == "windows" else ".deb"
+    cand = [f for f in have if f.lower().endswith(want)]
+    if not cand:
+        raise core.LabError(f"no {want} installer among: {', '.join(have)}")
+    return cand[0]
 
+
+def stage(name, installer=None):
+    """Copy an installer onto the guest and stop there -- do NOT install it.
+
+    Exists so the by-hand install exercises stay panel-first. The transfer is the one part a
+    terminal button genuinely cannot do (it is a shell on the guest, not a file copy to it),
+    and the alternative was printing an scp command with the path to the lab private key in
+    it, which put a key path in front of every learner for no teaching value. Installing is
+    the exercise; moving the file is plumbing.
+    """
+    h = config.host(name)
+    installer = _pick_installer(h, installer)
     local = str(pathlib.Path(config.INSTALLER_DIR) / installer)
     if h["os"] == "windows":
         remote = f"{config.WIN_STAGE}\\{installer}"
         core.guest(name, f"New-Item -ItemType Directory -Force -Path '{config.WIN_STAGE}' | Out-Null")
         core.push(name, local, f"{config.WIN_STAGE}/{installer}")
+    else:
+        remote = f"{config.LNX_STAGE}/{installer}"
+        core.guest(name, f"sudo -n mkdir -p {config.LNX_STAGE} && sudo -n chown $USER {config.LNX_STAGE}")
+        core.push(name, local, remote)
+    return {"installer": installer, "remote": remote}
+
+
+def install(name, ccid, installer=None):
+    """Automated install -- used to BUILD the `sensor` baseline, not for the exercise."""
+    h = config.host(name)
+    staged = stage(name, installer)
+    installer, remote = staged["installer"], staged["remote"]
+    if h["os"] == "windows":
         # Capture the INSTALLER's exit code, not ssh's. The previous form printed
         # $LASTEXITCODE to stdout and reported ssh's rc, so a failed install looked like
         # rc=0. CrowdStrike's installer is silent by design; /log is the only way to see why.
@@ -166,9 +191,6 @@ def install(name, ccid, installer=None):
                 err = (err + f" installer exit code {code}; see C:\\lab\\sensor_install.log").strip()
                 rc = int(code)
     else:
-        remote = f"{config.LNX_STAGE}/{installer}"
-        core.guest(name, f"sudo -n mkdir -p {config.LNX_STAGE} && sudo -n chown $USER {config.LNX_STAGE}")
-        core.push(name, local, remote)
         rc, out, err = core.guest(name, (
             f"sudo -n dpkg -i {remote} >/dev/null 2>&1; "
             f"sudo -n /opt/CrowdStrike/falconctl -s --cid={ccid} && "

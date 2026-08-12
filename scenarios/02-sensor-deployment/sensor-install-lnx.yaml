@@ -25,11 +25,17 @@ instructions: |
   1. Get the .deb for Ubuntu from Host setup and management > Sensor downloads,
      and your CID with checksum from the same page.
 
-  2. Copy it over:
-         scp -i ~/.ssh/falcon_lab_ed25519 falcon-sensor_*.deb labadmin@10.77.0.11:/tmp/
+  2. Get the package onto the host. Drop it in the lab's installer directory and let the
+     lab do the transfer — it is the one step a terminal button cannot do for you, since
+     the button gives you a shell ON the guest rather than a copy TO it:
+         ./lab.py sensor stage lnx
 
-  3. On the host (ssh -i ~/.ssh/falcon_lab_ed25519 labadmin@10.77.0.11):
-         sudo dpkg -i /tmp/falcon-sensor_*.deb
+     It prints the path it landed on. (Moving a file is plumbing; installing it is the
+     exercise, which is why the lab does the first and leaves you the second.)
+
+  3. Press **terminal** on this card to get a shell on falcon-lab-lnx, and install it
+     yourself — substituting the path step 2 printed:
+         sudo dpkg -i /opt/lab/falcon-sensor_*.deb
          sudo /opt/CrowdStrike/falconctl -s --cid=<your-cid-with-checksum>
          sudo systemctl start falcon-sensor
 
@@ -39,8 +45,10 @@ instructions: |
   Worth doing deliberately:
    - After step 3's first command only, run `lab grade`. The package is installed and the
      service will not start usefully, because no CID has been set.
-   - Read the RFM state yourself:
+   - Read the RFM state yourself, in the same terminal:
          sudo /opt/CrowdStrike/falconctl -g --rfm-state
+     This works because the host is Linux. There is no equivalent on Windows and the macOS
+     binary is a different one — see rfm-and-inactive-hosts, where that is the whole lesson.
      RFM means the sensor loaded without a matching kernel module. It runs, it reports in,
      and it collects almost nothing. A host in RFM looks healthy in every naive check --
      which is exactly why the grader treats RFM as a failure rather than a pass.
