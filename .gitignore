@@ -6,6 +6,11 @@ __pycache__/
 # Machine-local Claude Code permissions (contains this LAN's host/port allowlist)
 .claude/settings.local.json
 
+# Verbatim log of every prompt typed at Claude, written by a UserPromptSubmit hook so a
+# dropped code-server connection cannot lose one. NEVER commit: this repo is public and a
+# prompt is exactly where a pasted secret would land.
+.claude/prompt-log.jsonl
+
 # Chrome debugging profiles — never commit a browser profile, it holds cookies
 cdp-profile/
 *.log
