@@ -10,16 +10,88 @@ It must run somewhere that can reach both the hypervisor and the lab subnet.
 > it somewhere only you can reach and do not expose it beyond your own network.
 """
 import asyncio
+import json
+import os
 import threading
 import time
 import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import config, core, scenarios, sensor
 
 app = FastAPI(title="Falcon lab")
+app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")),
+          name="static")
+
+
+@app.websocket("/api/term/{host}")
+async def terminal(ws: WebSocket, host: str):
+    """An interactive SSH shell to a guest, bridged over a websocket to an xterm.js front end.
+
+    This is what lets the panel be the single remote surface: a browser gets a real shell on a
+    lab guest -- e.g. for the sensor-install exercise, where a bare host has no sensor and so no
+    RTR -- without any network access to the lab subnet. The panel already holds the SSH key and
+    reaches the guests, so it just proxies. It runs arbitrary commands on a guest, so it inherits
+    the panel's "put this behind auth / only trusted people reach it" warning.
+    """
+    await ws.accept()
+    try:
+        h = config.host(host)
+    except Exception:  # noqa: BLE001
+        await ws.send_text(f"\r\nunknown host {host!r}\r\n")
+        await ws.close()
+        return
+    import asyncssh
+    try:
+        conn = await asyncio.wait_for(
+            asyncssh.connect(h["ip"], username=h["user"], client_keys=[config.LAB_KEY],
+                             known_hosts=None), timeout=12)
+    except Exception as e:  # noqa: BLE001
+        await ws.send_text(f"\r\n[ssh to {host} ({h['ip']}) failed: {str(e)[:140]}]\r\n")
+        await ws.close()
+        return
+
+    async with conn:
+        proc = await conn.create_process(term_type="xterm-256color", term_size=(80, 24),
+                                         stderr=asyncssh.STDOUT, encoding="utf-8", errors="replace")
+
+        async def pump_out():
+            try:
+                while True:
+                    data = await proc.stdout.read(4096)
+                    if not data:
+                        break
+                    await ws.send_text(data)
+            except Exception:  # noqa: BLE001
+                pass
+
+        out_task = asyncio.create_task(pump_out())
+        try:
+            while True:
+                raw = await ws.receive_text()
+                try:
+                    m = json.loads(raw)
+                except Exception:  # noqa: BLE001
+                    proc.stdin.write(raw)
+                    continue
+                if m.get("type") == "input":
+                    proc.stdin.write(m.get("data", ""))
+                elif m.get("type") == "resize":
+                    try:
+                        proc.change_terminal_size(int(m["cols"]), int(m["rows"]))
+                    except Exception:  # noqa: BLE001
+                        pass
+        except WebSocketDisconnect:
+            pass
+        finally:
+            out_task.cancel()
+            try:
+                proc.terminate()
+            except Exception:  # noqa: BLE001
+                pass
 
 DOMAINS = {
     0: "Foundations", 1: "User Management", 2: "Sensor Deployment",
@@ -149,6 +221,9 @@ async def api_revert(name: str, baseline: str):
 
 PAGE = r"""
 <title>Falcon lab</title>
+<link rel="stylesheet" href="/static/xterm.css">
+<script src="/static/xterm.js"></script>
+<script src="/static/xterm-addon-fit.js"></script>
 <style>
   :root{--bg:#f4f5f7;--card:#fff;--ink:#15181d;--dim:#5d6672;--line:#d9dee5;
         --ok:#2c7a52;--bad:#a33528;--warn:#8a5a12;--accent:#1f4f8f;--soft:#eef1f4}
@@ -195,6 +270,13 @@ PAGE = r"""
   details.prep summary{cursor:pointer;user-select:none}
   details.prep ul{margin:6px 0 0;padding-left:20px}
   details.prep li{padding:1px 0}
+  #termwrap{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;
+    align-items:center;justify-content:center}
+  #termbox{width:min(1000px,94vw);height:min(640px,86vh);background:#0d1117;border-radius:8px;
+    border:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+  #termbar{display:flex;align-items:center;gap:10px;padding:7px 12px;background:#161b22;color:#e6e9ee}
+  #termbar .warnpill{font-size:11px;color:#d9a44a}
+  #term{flex:1;padding:6px 8px;min-height:0}
 </style>
 <div class="wrap">
   <h1>Falcon lab</h1>
@@ -202,6 +284,13 @@ PAGE = r"""
     what is actually true &mdash; a check that could not run is never a pass.</div>
   <div id="hosts"></div>
   <div id="out-hosts-log"></div>
+  <div id="termwrap"><div id="termbox">
+    <div id="termbar"><span>SSH terminal &mdash; <span class="mono" id="termhost"></span></span>
+      <span class="warnpill">runs commands on the guest</span>
+      <span class="spacer"></span>
+      <button onclick="closeTerm()">close</button></div>
+    <div id="term"></div>
+  </div></div>
   <div id="scen"></div>
 </div>
 <script>
@@ -225,6 +314,7 @@ async function loadHosts(){
       <span class="pill ${h.reachable?'ok':'dim'}">${h.reachable?'up':esc(h.vm)}</span>
       ${h.sensor?`<span class="${sensorClass(h.sensor.verdict)}">${esc(h.sensor.verdict)}</span>`:''}
       <span class="spacer"></span>
+      ${h.reachable?`<button onclick="openTerm('${h.host}')">terminal</button>`:''}
       ${(h.baselines||[]).map(b=>
         `<button onclick="revert('${h.host}','${b}',this)">revert to ${esc(b)}</button>`).join('')}
     </div></div>`).join('');
@@ -398,6 +488,34 @@ async function grade(id, btn){
   gbox(id, h);
   loadHosts();
 }
+
+// --- SSH terminal (xterm.js over a websocket to a server-side PTY) ---
+let TERM=null, TWS=null, TFIT=null, TRESIZE=null;
+function sendResize(){ if(TWS&&TWS.readyState===1&&TERM) TWS.send(JSON.stringify({type:'resize',cols:TERM.cols,rows:TERM.rows})); }
+function openTerm(host){
+  closeTerm();
+  $('#termwrap').style.display='flex';
+  $('#termhost').textContent = host;
+  TERM = new Terminal({fontSize:13, fontFamily:'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
+                       cursorBlink:true, theme:{background:'#0d1117'}});
+  TFIT = new FitAddon.FitAddon(); TERM.loadAddon(TFIT);
+  TERM.open($('#term')); TFIT.fit();
+  const proto = location.protocol==='https:'?'wss':'ws';
+  TWS = new WebSocket(`${proto}://${location.host}/api/term/${encodeURIComponent(host)}`);
+  TWS.onopen = ()=>{ sendResize(); TERM.focus(); };
+  TWS.onmessage = ev => TERM.write(ev.data);
+  TWS.onclose = ()=>{ if(TERM) TERM.write('\r\n\x1b[33m[disconnected]\x1b[0m\r\n'); };
+  TERM.onData(d => { if(TWS&&TWS.readyState===1) TWS.send(JSON.stringify({type:'input',data:d})); });
+  TRESIZE = ()=>{ if(TFIT){ TFIT.fit(); sendResize(); } };
+  window.addEventListener('resize', TRESIZE);
+}
+function closeTerm(){
+  $('#termwrap').style.display='none';
+  if(TRESIZE){ window.removeEventListener('resize', TRESIZE); TRESIZE=null; }
+  if(TWS){ try{TWS.close();}catch(e){} TWS=null; }
+  if(TERM){ try{TERM.dispose();}catch(e){} TERM=null; }
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && $('#termwrap').style.display==='flex') closeTerm(); });
 
 loadHosts(); loadScen();
 setInterval(loadHosts, 30000);
