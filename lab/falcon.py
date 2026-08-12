@@ -289,7 +289,16 @@ def rfm_state(hostname, expect="no"):
 
     `reduced_functionality_mode` is yes/no/unknown; `unknown` grades as None, not a fail --
     an older sensor that never populated the field is not evidence of a problem.
+
+    `expect` is `no`, `yes`, or **`known`**. `known` asserts only that the cloud can tell you
+    the state, whichever state it is, and exists because asserting `no` grades the LAB'S MOOD
+    rather than the learner. An exercise about *finding* hosts in RFM must not fail the moment
+    there is one to find -- which is exactly what happened when a Windows update walked
+    FALCON-LAB-WIN into RFM. Whether the fleet is healthy is a judgement for an `attest`, where
+    a human belongs; whether the platform-agnostic read WORKS is the automatable part.
     """
+    if expect not in ("no", "yes", "known"):
+        return {"ok": None, "reason": f"rfm_state expect must be no|yes|known, got {expect!r}"}
     clients = _clients()
     if not clients:
         return {"ok": None, "reason": _why_unavailable()}
@@ -318,7 +327,13 @@ def rfm_state(hostname, expect="no"):
         multi = len(states) > 1
         shown = ", ".join(f"{h}{'/' + aid if multi else ''} rfm={s}"
                           for h, aid, s in sorted(states))
-        if all(s == "unknown" for _, _, s in states):
+        unknown = [h for h, _, s in states if s == "unknown"]
+        if expect == "known":
+            if unknown:
+                return {"ok": None, "reason": f"cloud does not report RFM state for "
+                                              f"{', '.join(sorted(set(unknown)))} ({shown})"}
+            return {"ok": True, "reason": f"{shown} -- state readable from the cloud"}
+        if len(unknown) == len(states):
             return {"ok": None, "reason": f"cloud reports RFM state unknown ({shown})"}
         ok = all(s == expect for _, _, s in states if s != "unknown")
         return {"ok": ok, "reason": f"{shown} (expected {expect})"}

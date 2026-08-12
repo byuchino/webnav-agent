@@ -316,7 +316,7 @@ only these **read** scopes — it cannot change anything:
 - kind: api
   assert: ioc_exists          # value_contains / type / action, all optional and ANDed
 - kind: api
-  assert: rfm_state           # target: win|lnx|mac (or hostname:) + expect: no|yes
+  assert: rfm_state           # target: win|lnx|mac (or hostname:) + expect: no|yes|known
 ```
 
 ### `rfm_state`, and why RFM cannot be graded from the host
@@ -325,6 +325,22 @@ Added 2026-08-12. `target:` names a lab guest in the lab's own terms (`win`/`lnx
 resolves to that host's Falcon hostname *and* puts the right terminal button on the scenario
 card; `hostname:` is the escape hatch for a host the lab does not own. `expect: yes` inverts it,
 which is what an "induce RFM" exercise wants.
+
+**`expect: known` — assert the read works, not that the fleet is healthy.** Added the same day,
+after `rfm-and-inactive-hosts` was caught grading the lab's mood instead of the learner. The
+exercise is titled "Find hosts in RFM" and its check demanded that no host be in RFM; the moment
+a Windows update put one there, the exercise became unpassable no matter how well it was done.
+`known` passes when the cloud reports `yes` **or** `no` for every matched host, and returns
+`None` only when the state is genuinely `unknown`. The reason string always names the actual
+state, so a passing check still shows you `rfm=yes`.
+
+The general rule this is an instance of: **an automated check should assert the mechanism, and
+leave the judgement to `attest`.** "Can I read RFM state for any host on any OS" is mechanical
+and worth grading. "Is my fleet in an acceptable state" is a human call, and encoding it as a
+fixed expectation quietly turns environmental drift into a failing grade. The same trap was live
+on this scenario's old `kind: sensor` check, which hard-fails on RFM — reverting `lnx` to its
+`clean-rfm` baseline on purpose would have broken the exercise for the same reason. Both checks
+are now `expect: known`.
 
 It reads the device field `reduced_functionality_mode` (`yes`/`no`/`unknown`); `unknown` grades
 `None`, never a fail, because an older sensor that never populated the field is not evidence of

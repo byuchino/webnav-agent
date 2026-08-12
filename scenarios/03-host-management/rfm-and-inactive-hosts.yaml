@@ -36,8 +36,13 @@ instructions: |
      the exam asks for the number, and knowing where it is stated is more durable than
      memorising it.
 
-  3. Confirm your own lab hosts are NOT in RFM — and learn why "ask the host" is not a
-     strategy that survives a mixed fleet.
+  3. Determine the RFM state of each of your own lab hosts — whatever that state turns out
+     to be — and learn why "ask the host" is not a strategy that survives a mixed fleet.
+
+     Do not assume the answer is "healthy". At least one of your hosts may well be in RFM
+     without anyone having put it there, which is the honest version of this lesson: RFM
+     arrives on its own, usually because the OS patched itself past what the installed sensor
+     supports. Finding that is a pass, not a failure.
 
      On the **Linux** host: press **terminal** on the `falcon-lab-lnx` card (or this card's
      Linux terminal button) and run:
@@ -78,30 +83,44 @@ expect:
   detection: none
 
 verify:
-  - kind: sensor
-    label: linux sensor not in RFM (host-side, falconctl)
-    target: lnx
+  # Deliberately state-AGNOSTIC. These assert that the cloud can tell you each host's RFM
+  # state, not that the state is healthy. An exercise about FINDING hosts in RFM must not
+  # fail the moment there is one to find -- and there is: a Windows update put FALCON-LAB-WIN
+  # into RFM, and the lnx guest has a `clean-rfm` baseline you can revert to on purpose.
+  # Whether the state is GOOD is a judgement, and judgements belong in attest.
   - kind: api
-    label: windows sensor not in RFM (cloud-side, no host command exists)
+    label: linux RFM state readable from the cloud
+    assert: rfm_state
+    target: lnx
+    expect: known
+  - kind: api
+    label: windows RFM state readable from the cloud (no host command exists)
     assert: rfm_state
     target: win
+    expect: known
   - kind: api
     label: host management shows both lab hosts
     assert: hosts_matching
     contains: "FALCON-LAB"
     at_least: 2
   - kind: attest
-    label: filtering and retention
+    label: filtering, retention, and what you actually found
     items:
       - "I filtered Host management to show hosts in RFM"
       - "I filtered for inactive sensors"
       - "I found the inactive-sensor retention period and can say where it is documented"
+      - "I know which of my hosts are in RFM right now, and which are not"
+      - "I read the Linux host's RFM state myself with falconctl, in the panel terminal"
+      - "I looked for a Windows equivalent and satisfied myself that none exists"
 
 hint: >
-  The two RFM checks deliberately disagree about method. The Linux one reads state directly
-  from the host with falconctl, so it is authoritative regardless of what the console shows.
-  The Windows one has to go through the API, because no host-side query exists — and that is
-  the check that would still work on a Mac, or on a host you have no shell for at all.
+  The two RFM checks assert that the CLOUD can tell you each host's state, not that the state
+  is healthy — so a host sitting in RFM still passes them. That is deliberate: this exercise
+  is about finding RFM hosts, and a grader that failed whenever one existed would be grading
+  the lab's condition instead of your work. Judging whether the state is acceptable is yours,
+  in the attest list. Both checks go through the API because that is the only read that works
+  on every platform — Linux also answers host-side via falconctl, Windows answers nowhere at
+  all, and a Mac would answer differently again.
   The remaining API check counts VISIBLE hosts matching "FALCON-LAB" — hidden
   hosts are excluded, so a host you hid during the stale-host exercise will not be counted, and
   fewer than two means one is hidden, deleted, or never enrolled rather than merely offline.
