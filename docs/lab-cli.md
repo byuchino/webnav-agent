@@ -143,6 +143,17 @@ to `sensor` and checking straight away reports `rfm-state=true` on a host that i
 stale reading indistinguishable from a failed revert. `prepare()` therefore waits for the
 sensor to settle whenever the baseline involves one, and says so in the progress log.
 
+**The CLOUD field lags too, and nothing waits for it.** Measured on a `win` round trip
+2026-08-12 (`rfm` → `sensor` → `rfm`): after reverting *back* to the RFM baseline, the API still
+reported `reduced_functionality_mode: no` at 30 s and only flipped to `yes` at 60 s. The host had
+to boot, the sensor had to check in, and the device record had to be updated cloud-side. So an
+`rfm_state` check run immediately after a revert can report the **previous** state — and unlike
+`falconctl`, `prepare()` has no settle loop for it, because the lag is on CrowdStrike's side
+rather than the guest's. Give it a minute before grading RFM after a revert, or re-grade if the
+answer looks like the state you just left. The flip in the other direction (`rfm` → `sensor`)
+had already landed by the first 30 s poll, so the lag is not symmetric and should not be
+assumed to be any particular length.
+
 ## Manual scenarios
 
 Installing a sensor is on the CCFA syllabus, so it is an exercise rather than setup. Those

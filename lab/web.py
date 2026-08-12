@@ -153,6 +153,30 @@ async def api_job(jid: str):
                              "result": j["result"]})
 
 
+def _redact(s):
+    """Mask the CID and AID out of a sensor reading before it leaves the panel.
+
+    `sensor.verify` returns both in full because the grader needs to know they are SET. Nothing
+    in the UI renders either one, so shipping them over HTTP bought nothing and cost plenty:
+    they land in browser devtools, in any proxy log, and in pasted transcripts. The CLI has
+    always masked them at print time (`lab.py -v sensor verify` shows `cid: set`, `aid: set
+    (abc123...)`) and config.py says outright that the CCID must never be printed or scraped --
+    the web layer was simply the one path that had not been given the same treatment.
+
+    The AID keeps a short prefix because identifying WHICH device record a host maps to is
+    genuinely useful when a stale duplicate exists, and six characters cannot be typed into a
+    console to reach anything.
+    """
+    if not isinstance(s, dict):
+        return s
+    out = dict(s)
+    if "cid" in out:
+        out["cid"] = "set" if out["cid"] else None
+    if "aid" in out:
+        out["aid"] = f"{str(out['aid'])[:6]}..." if out["aid"] else None
+    return out
+
+
 @app.get("/api/status")
 async def api_status():
     out = []
@@ -164,7 +188,7 @@ async def api_status():
         # the scenarios do, rather than making the page guess which snapshot means what.
         st["baselines"] = [b for b, snap in (h.get("snapshots") or {}).items() if snap in have]
         if name in config.GUESTS:
-            st["sensor"] = await _off(sensor.verify, name)
+            st["sensor"] = _redact(await _off(sensor.verify, name))
         out.append(st)
     return JSONResponse(out)
 
