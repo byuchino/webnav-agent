@@ -470,7 +470,7 @@ The corollary matters for exercise design: under a **Phase 1** policy there is n
 registration, so Defender stays fully active and *both* engines act on a test file. That is not a
 lab defect — Phase 1 is explicitly the co-residency policy.
 
-### 2. EICAR is NOT quarantined at Phase 2 (ML prevention = MODERATE)
+### 2. EICAR is NEVER quarantined — at any ML prevention level
 
 With `Quarantine on Write: enabled`, `Quarantine & Security Center Registration: enabled`, and
 Cloud/Sensor Anti-malware at `det=AGGRESSIVE prev=MODERATE`, EICAR produced a detection and
@@ -483,10 +483,31 @@ quarantine API : no quarantined files on FALCON-LAB-WIN
 disk     : C:\lab\eicar.com still present
 ```
 
-**This falsifies the premise recorded for `quarantined-files`** ("EICAR is quarantined when the
-prevention Quarantine setting is on"). It is not, at MODERATE. EICAR is an *Informational* test-file
-detection, not an ML malware conviction, and `Quarantine on Write` acts on convictions. Whether
-`prev=AGGRESSIVE` (Phase 3) convicts it is **untested** — do not assume it does.
+Then the sliders were raised to `det=AGGRESSIVE prev=AGGRESSIVE` (Phase 3 level), confirmed applied
+on the host (`settings_hash` 4fc44be → 7181e910, `applied_date=08:51:19Z`), and EICAR re-dropped
+with **Defender already passive**, so nothing else could act. Identical result:
+
+```
+pattern_disposition=0  quarantine_file=False  kill_process=False  process_blocked=False
+quarantine API : no quarantined files
+disk           : still present at +5s, +20s, +40s, +65s
+```
+
+**EICAR cannot demonstrate quarantine at any ML prevention level.** `EICARTestFileWrittenWin` is an
+*Informational* test-file detection, not an ML malware conviction, and `Quarantine on Write` acts on
+convictions — so the ML sliders never touch it. Raising prevention to AGGRESSIVE changes nothing.
+
+**Two scenarios rest on a premise that is false:**
+- `prevention-detect-vs-block` step 5 ("the file should now be quarantined rather than left in
+  place") — it never will be.
+- `quarantined-files` ("EICAR is quarantined when the prevention Quarantine setting is on") — it is
+  not, ever.
+
+Both need a different trigger for the *prevention* beat. EICAR remains perfectly good for the
+*detection* beat. Safe deterministic candidates for blocking, none requiring real malware: a
+**custom IOC on a benign file's SHA256 with action Block** (drives `Execution Blocking / Custom
+Blocking`), or a **custom IOA on a distinctive command line** (drives `process_blocked` /
+`kill_process`) — the mechanism `custom-ioa-behavioral` already uses.
 
 ### 3. Grade attribution, never disk state
 
