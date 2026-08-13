@@ -152,9 +152,17 @@ changes above were *not* blocked — a documented Group Policy setting reads dif
 blocked, the assistant should hand over the command rather than route around it; working around it
 is precisely what the block exists to prevent.
 
-## What still has to happen for any of this to stick
+## Status (end of 2026-08-13): DONE and verified
 
-The pinning and the clock fix are applied to the **running guest only**. Re-take
-`clean-withSensor` with a clean shutdown (a live Windows snapshot can capture NTFS mid-write and
-produce an unbootable rollback) and keep the current snapshot until the new one is verified
-bootable. Until then, every revert undoes section 1.
+`config.py` maps the `sensor` baseline to **`clean-withSensor-pinned`**, taken 2026-08-13 and
+verified by reverting to it: boots, UBR still 8875, `rfm=no`, sensor running, Defender `Normal`,
+no EICAR on disk. The panel has been restarted, so it serves this baseline too (`config.py` is
+Python — the change was invisible to the running service until the restart).
+
+`clean-withSensor` is retained as the **unpinned fallback** and as the honest record of what this
+guest looks like without the pin. `clean-rfm` still stages RFM deliberately, so nothing
+pedagogical was lost by pinning.
+
+**Every revert still leaves the clock ~7 h behind** — that is snapshot behaviour, not something
+the pin fixes. `prevention-detect-vs-block` resyncs in `setup:`; anything else that reverts `win`
+must do it by hand, or its detection timestamps will be wrong.
