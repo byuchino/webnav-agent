@@ -16,7 +16,13 @@ the dev box. If you are looking for a process on your laptop, you will not find 
 The controller is dual-homed: `eth0` on the LAN (Proxmox API, internet, cloudflared) and `eth1`
 on the lab subnet `10.77.0.0/24` (the guests). That is why it can grade and open shells while
 the dev box cannot — the dev box has **no route to `10.77.0.0/24`**, so `lab.py` run there will
-report guests unreachable. This is normal, not a fault.
+report guests unreachable. This is normal, not a fault. To work from the dev box anyway:
+`sudo ip route add 10.77.0.0/24 via 192.168.254.27` (does not survive a reboot).
+
+The Windows guest carries four deliberate modifications — a pinned OS build, a clock that needs
+resyncing after every revert, and a Defender left in passive mode — none of which are visible in
+the snapshot that restores them. See **`windows-baseline.md`** before trusting anything that guest
+reports.
 
 ## Reaching it
 
