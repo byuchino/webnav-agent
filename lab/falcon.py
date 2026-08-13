@@ -256,6 +256,66 @@ def policy_assigned_to_group(policy_kind, group_name):
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
 
 
+def _group_names(groups):
+    """A policy's `groups` entries carry the name when the API expands them; fall back to id."""
+    out = []
+    for g in groups or []:
+        if isinstance(g, str):
+            out.append(g)
+        elif isinstance(g, dict):
+            out.append(g.get("name") or g.get("id") or "?")
+    return out
+
+
+def policy_matrix(kinds=VALID_POLICY_KINDS):
+    """Every policy of each kind, in precedence order, with the groups it is assigned to.
+
+    This is the view the console does not give you in one place: the console lists policies per
+    platform tab and makes you open each one to see its groups, and lists a host group without
+    saying which policies target it. Returns
+    {kind: {"ok": bool|None, "reason": str, "policies": [{name, platform, enabled, default,
+    groups: [...]}]}}, ordered the way the sensor resolves them -- first match wins, and the
+    platform default at the bottom catches whatever nothing else claimed.
+    """
+    clients = _clients()
+    if not clients:
+        return {k: {"ok": None, "reason": _why_unavailable(), "policies": []} for k in kinds}
+    out = {}
+    for kind in kinds:
+        if kind not in clients:
+            out[kind] = {"ok": None, "reason": f"unknown policy kind {kind!r}", "policies": []}
+            continue
+        try:
+            # precedence.asc is what the sensor actually walks. If the sort key is rejected the
+            # unsorted list is still worth showing -- flagged, so nobody reads order into it.
+            r = clients[kind].query_combined_policies(limit=500, sort="precedence.asc")
+            ordered = r.get("status_code") == 200
+            if not ordered:
+                r = clients[kind].query_combined_policies(limit=500)
+            if r.get("status_code") != 200:
+                out[kind] = {"ok": None, "policies": [],
+                             "reason": f"read failed (HTTP {r.get('status_code')}) -- check the "
+                                       f"key's read scope for {kind} policies"}
+                continue
+            pols = []
+            for p in (r.get("body") or {}).get("resources") or []:
+                groups = _group_names(p.get("groups"))
+                pols.append({"name": p.get("name") or "?",
+                             "platform": p.get("platform_name") or "?",
+                             "enabled": bool(p.get("enabled")),
+                             # The platform default has no groups and cannot be given any; it is
+                             # the catch-all, not an unassigned policy, and saying so avoids the
+                             # obvious misreading of an empty group list.
+                             "default": (p.get("name") or "").endswith("platform_default"),
+                             "groups": groups})
+            out[kind] = {"ok": True, "policies": pols,
+                         "reason": "" if ordered else "NOT in precedence order (sort rejected)"}
+        except Exception as e:  # noqa: BLE001
+            out[kind] = {"ok": None, "policies": [],
+                         "reason": f"Falcon API read failed: {str(e)[:120]}"}
+    return out
+
+
 def visible_host_count_is(hostname, equals):
     """Are there exactly `equals` VISIBLE (non-hidden) hosts with this hostname?
 

@@ -17,7 +17,7 @@ import argparse
 import json
 import sys
 
-from lab import config, core, scenarios, sensor
+from lab import config, core, falcon, scenarios, sensor
 
 OK, BAD, WARN, DIM = "\033[32m", "\033[31m", "\033[33m", "\033[2m"
 END = "\033[0m"
@@ -189,6 +189,57 @@ def cmd_sensor(a):
         print(f"{a.host:5} remove rc={r['rc']}")
 
 
+POLICY_LABELS = {"prevention": "Prevention", "sensor_update": "Sensor update",
+                 "response": "Response"}
+
+
+def cmd_policies(a):
+    kinds = [a.kind] if a.kind else list(falcon.VALID_POLICY_KINDS)
+    matrix = falcon.policy_matrix(kinds)
+
+    if a.by_group:
+        # group -> [(kind, policy)]. The inverted view answers "what hits this group?", which is
+        # the question a policy exercise actually asks and the console makes you assemble by hand.
+        by_group, broken = {}, []
+        for kind, res in matrix.items():
+            if res["ok"] is not True:
+                broken.append(f"{kind}: {res['reason']}")
+                continue
+            for p in res["policies"]:
+                for g in p["groups"]:
+                    by_group.setdefault(g, []).append((kind, p))
+        for g in sorted(by_group):
+            print(_c(g, WARN))
+            for kind, p in by_group[g]:
+                state = _c("enabled", OK) if p["enabled"] else _c("disabled", DIM)
+                print(f"  {POLICY_LABELS.get(kind, kind):14} {p['name'][:34]:34} "
+                      f"{p['platform']:8} {state}")
+        if not by_group and not broken:
+            print(_c("no policy is assigned to any host group", DIM))
+        for b in broken:
+            print(_c(f"  -- {b}", BAD))
+        return
+
+    for kind in kinds:
+        res = matrix[kind]
+        print(_c(f"\n{POLICY_LABELS.get(kind, kind)} policies", WARN))
+        if res["ok"] is not True:
+            print(_c(f"  -- {res['reason']}", BAD))
+            continue
+        if res["reason"]:
+            print(_c(f"  !! {res['reason']}", BAD))
+        for p in res["policies"]:
+            state = _c("enabled", OK) if p["enabled"] else _c("disabled", DIM)
+            groups = ", ".join(p["groups"])
+            if p["default"]:
+                groups = _c("(catch-all: every host no policy above claimed)", DIM)
+            elif not groups:
+                groups = _c("no groups -- inert", BAD)
+            print(f"  {p['name'][:32]:32} {p['platform']:8} {state:16} {groups}")
+    print(_c("\nlisted in precedence order: first policy whose group matches a host wins",
+             DIM))
+
+
 def cmd_web(a):
     import uvicorn
     from lab.web import app
@@ -252,6 +303,11 @@ def main():
     s.add_argument("--installer")
     s.add_argument("--token", help="maintenance token, for uninstall")
     s.set_defaults(fn=cmd_sensor)
+
+    s = sub.add_parser("policies", help="which policies are assigned to which host groups")
+    s.add_argument("kind", nargs="?", choices=list(falcon.VALID_POLICY_KINDS))
+    s.add_argument("--by-group", action="store_true", help="invert: group -> policies")
+    s.set_defaults(fn=cmd_policies)
 
     s = sub.add_parser("web", help="serve the control panel")
     s.add_argument("--port", type=int, default=8901)

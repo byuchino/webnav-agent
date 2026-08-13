@@ -10,6 +10,7 @@ a few aligned lines of output, no round trip through a model.
 ./lab.py show sensor-install-win     # full text of one exercise
 ./lab.py run  sensor-install-win     # prepare it
 ./lab.py grade sensor-install-win    # check your work
+./lab.py policies                    # which policies hit which host groups
 ./lab.py revert win bare             # roll back, seconds not minutes
 ./lab.py web                         # control panel on :8901
 ```
@@ -393,6 +394,38 @@ correctly reports NOT YET now that the check asks whether a policy is *assigned*
 Two implementation notes worth keeping: group/host **names are resolved client-side** (the FQL
 `name:'…'` filter returned null for a group that plainly exists), and API responses can carry
 `"resources": null`, so every read normalises with `or []`.
+
+## `./lab.py policies` — the assignment matrix the console will not draw
+
+Added 2026-08-13. Same read-only API key as above; without one it prints why it could not look,
+never a blank matrix that reads like "nothing is assigned".
+
+```
+./lab.py policies                 # all three kinds, precedence order
+./lab.py policies prevention      # one kind
+./lab.py policies --by-group      # inverted: group -> the policies that hit it
+```
+
+The console answers this question in the most expensive possible way. Policies are listed per
+**platform tab**, a policy's host groups live on that policy's own details page, and a host
+group's page does not name the policies targeting it at all. So "which policies apply to the
+Falcon Lab group?" costs one page-open per policy per platform per kind, and the answer only
+holds until someone edits something. The API returns the assignments in the list response, so
+the whole matrix is one read per kind.
+
+Two things the output makes visible that a tab-by-tab walk hides:
+
+- **`no groups -- inert`.** A policy can be enabled, fully configured, and reach nothing. This
+  is the single most common reason a policy exercise "doesn't work", and in the console it looks
+  identical to a working policy until you open it.
+- **`(catch-all)` on `platform_default`.** The default has no groups *and cannot be given any* —
+  its empty group list means the opposite of every other empty group list on the page. Hosts that
+  no policy above claimed land here, which is why an inert Phase-1 policy doesn't produce an
+  unprotected host, just a differently-protected one than you intended.
+
+Precedence is per platform, first match wins, and the list is printed in the order the sensor
+walks it (`sort=precedence.asc`). If the API rejects that sort the unsorted list still prints,
+flagged — order you cannot trust is worse than no order, so it says so rather than implying it.
 
 ## The web panel
 
