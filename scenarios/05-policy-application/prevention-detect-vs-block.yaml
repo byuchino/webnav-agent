@@ -1,28 +1,34 @@
 id: prevention-detect-vs-block
-name: Prevention policy — the gap between detecting and blocking
+name: Prevention policy — the phased rollout, and what each phase actually changes
 target: win
 baseline: sensor
 mode: guided
 domain: 5
 difficulty: 2
-duration_min: 25
+duration_min: 35
 objective: "5.1 — determine appropriate prevention policy settings and explain the effect on posture"
 requires: [lab-host-group, eicar-win]
 
 summary: >
-  Change one prevention setting and watch the endpoint's behaviour change with it. This is the
-  exercise that makes "detection" versus "prevention" concrete instead of a definition, and it
-  is the clearest demonstration of why a console check alone is not enough.
+  Walk a host group through CrowdStrike's own Phase 1 -> Phase 2 rollout and measure what
+  changes. The headline change is not the one most people expect: promoting to Phase 2 makes
+  Windows Defender stand down, because Phase 2 registers Falcon with the Windows Security
+  Center. Until that happens you have two engines acting on the same file and cannot attribute
+  an outcome to either.
 
 teaches: |
-  - That a detection and a prevention are the same event with a different policy decision
-  - That policy applies through a GROUP, so the group assignment is part of the setting
-  - That a saved policy is not an applied policy: propagation takes time, and precedence can
-    mean the setting you edited is not the one the host receives
-  - Why proving a change requires the endpoint, not just the console
+  - The phased rollout as CrowdStrike documents it: which phase to START in, and why
+  - That a policy applies through a GROUP, so the group assignment is part of the setting
+  - That "saved" and "applied" are different claims, visible as different API fields
+  - That co-residency is a real state with real consequences: two AV engines, and disk state
+    that cannot tell you which one acted
+  - That an on-disk outcome is NOT evidence about Falcon — attribution comes from the
+    detection's own pattern_disposition, never from the filesystem
+  - Why EICAR can never demonstrate quarantine, and what that says about detections vs
+    convictions
 
 setup:
-  - name: revert to a clean sensor baseline and confirm the sensor is healthy
+  - name: confirm the sensor is present and healthy
     shell: |
       $s = Get-Service CSFalconService -ErrorAction SilentlyContinue
       if (-not $s -or $s.Status -ne 'Running') { Write-Output 'SENSOR NOT RUNNING'; exit 1 }
@@ -30,74 +36,177 @@ setup:
       Write-Output 'ready'
     expect_contains: ready
 
+  # A reverted snapshot restores the clock that was in the snapshot, which has been observed
+  # 63 minutes and 7 hours behind real time. A skewed clock puts detections in the past, where
+  # a "last hour" console filter hides them. Reported rather than asserted: if NTP is
+  # unreachable the exercise should still run, but you should know the clock is wrong.
+  - name: resync the guest clock (a revert restores a stale RTC)
+    shell: |
+      w32tm /config /manualpeerlist:"time.windows.com,0x9 pool.ntp.org,0x9" /syncfromflags:manual /update | Out-Null
+      Restart-Service w32time
+      Start-Sleep -Seconds 3
+      w32tm /resync /force 2>&1 | Out-Null
+      "guest UTC now: " + (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")
+
 instructions: |
-  The Windows host is back at a clean sensor baseline with no EICAR file present.
+  Windows is back at a clean sensor baseline with no EICAR file present.
 
-  1. Endpoint security > Prevention policies, on the **Windows** platform tab (policies are
-     per-platform). Find the policy that applies to the **Falcon Lab** group. If the group has no
-     dedicated policy, **duplicate** the default one (the **Duplicate** action is on the policy's
-     details page, NOT the all-policies list; a duplicate does not inherit host-group
-     assignments) and assign the duplicate to Falcon Lab — never edit the default while learning.
-     The mixed Falcon Lab group is fine here: a Windows prevention policy governs only the Windows
-     host.
+  Before touching anything, run `./lab.py policies prevention` (or read Endpoint security >
+  Prevention policies, Windows tab). Note that the three stock **Phase** policies exist and that
+  none of them has a host group — an enabled policy with no groups reaches nothing.
 
-  2. Note its current state. Somewhere in that policy there are settings that decide whether
-     a known-malicious file is merely detected or actively blocked. Read them; do not change
-     anything yet.
+  ## 1. Read the phases and decide where to start
 
-  3. **First, with prevention OFF for that setting**, drop the EICAR file. In the control panel,
-     tick **keep state** on the eicar-win card and press **set up** — "keep state" matters here
-     because a normal set up would revert the Windows host and wipe the policy state you are
-     testing. (With shell access the same is `./lab.py run eicar-win --no-revert`.)
+  Open each of `Phase 1 - initial deployment`, `Phase 2 - interim protection` and
+  `Phase 3 - optimal protection` and read the description at the top. They tell you, in
+  CrowdStrike's own words, which one to start in:
 
-     Confirm in Endpoint detections that a detection appeared, and confirm on disk that the
-     file survived. Detected, not blocked.
+    - Phase 1 — "optimized for detection... if you are deploying Falcon **co-resident with
+      existing antivirus** or HIPS, start here"
+    - Phase 2 — "solid IOA protection and other preventions... **if you don't have existing
+      antivirus**/HIPS, start here"
+    - Phase 3 — "optimally configured for stopping breaches... assign hosts here **within 90
+      days**, ideally after detection triage and allowlisting as part of testing Phase 2"
 
-  4. **Now turn the relevant prevention ON** for the Falcon Lab policy and save. Wait for the
-     host to receive it — the host's detail panel shows when a policy was applied, and
-     "Changes pending" means it has not landed yet. This wait is the lesson: the console
-     showing a setting does not mean the endpoint has it.
+  This Windows guest runs Microsoft Defender, so it IS a co-residency case. Start at Phase 1.
 
-  5. Repeat step 3. The file should now be quarantined rather than left in place.
+  ## 2. Put the host group on a Phase 1 policy
 
-  6. Check your work — press **grade** on this scenario's card in the control panel, or with shell access run:
-         lab grade prevention-detect-vs-block
+  Open `Phase 1 - initial deployment` > **Duplicate policy**. Name it `Falcon Lab - Windows`.
+  Never edit a stock policy while learning.
 
-  If step 5 behaves exactly like step 3, do not assume the exercise is broken. Check, in
-  order: did the policy save; is it assigned to the Falcon Lab group; is this host in that
-  group; has the host actually received it; is another policy taking precedence. That
-  checklist IS objective 5.1.
+  On the duplicate: **Enable policy** — a duplicate is created **disabled**, and an assigned but
+  disabled policy will never apply no matter how long you wait. Then **Assigned host groups** >
+  **Assign host groups** > `Falcon Lab`.
+
+  Wait for it to reach the host. "Saved" is not "applied": watch the host's detail panel, or
+  `./lab.py policies` plus the host's own state. Expect single-digit minutes.
+
+  ## 3. Drop EICAR under Phase 1 — and watch TWO products react
+
+  On the eicar-win card tick **keep state**, then press **set up** (keep state matters: a normal
+  set up reverts the guest and wipes the policy state you are testing). With shell access that is
+  `./lab.py run eicar-win --no-revert`.
+
+  Now look at three things, in this order:
+
+    a. **Falcon's verdict.** Endpoint detections > the new detection on falcon-lab-win. It is
+       `EICARTestFileWrittenWin`, severity **Informational**, and its pattern disposition shows
+       **no action taken** — Falcon detected and did nothing else. Correct for a detect-mode
+       policy.
+    b. **The file on disk.** Very likely **gone**.
+    c. **Who removed it.** In the guest terminal:
+       `Get-MpThreatDetection | Select-Object -First 2 InitialDetectionTime, Resources`
+
+  Defender removed it — not Falcon. **This is the trap the exercise exists for.** The obvious
+  reading of (b) is "Falcon blocked it", and that reading is wrong. On a co-resident host the
+  filesystem cannot attribute an action to a product. Only (a) can.
+
+  ## 4. Promote to Phase 2
+
+  Duplicate `Phase 2 - interim protection` as `Falcon Lab - Windows P2`, **enable** it, and
+  assign `Falcon Lab` to it. Then **remove** the `Falcon Lab` group from your Phase 1 duplicate —
+  that removal is what makes this a promotion rather than a precedence puzzle, because a fresh
+  duplicate lands at LOWER precedence than the policy you already have.
+
+  Watch the host until the new policy applies, then check Defender in the guest terminal:
+
+      Get-MpComputerStatus | Select-Object AMRunningMode, RealTimeProtectionEnabled
+
+  Within about a minute of the policy applying it flips to **Passive Mode**, then real-time
+  protection goes false — with nothing done on the host. Phase 2 carries **Quarantine & Security
+  Center Registration**; Phase 1 does not. Registering with the Windows Security Center is what
+  makes Windows stand its own AV down.
+
+  Note the platform caveat: that automatic step-down is **Windows client** behaviour. On Windows
+  **Server** there is no automatic passive mode — it takes an explicit setting — so on servers
+  the co-residency overlap is yours to end by hand.
+
+  ## 5. Drop EICAR again — now the reading is clean
+
+  Repeat step 3. This time Defender is passive and silent, and the file **survives**. Falcon
+  detects and, again, takes no action.
+
+  ## 6. Why EICAR is never quarantined — at ANY phase
+
+  Raise your P2 policy's Cloud and Sensor Anti-malware **prevention** sliders to AGGRESSIVE
+  (Phase 3 level), let it apply, and drop EICAR once more. It is still not quarantined.
+
+  That is not a broken lab. `Quarantine on Write` acts on files the ML engine **convicts**, and
+  EICAR is not malware — it is an agreed-upon test string that raises an *Informational* test-file
+  detection. No conviction, no quarantine, at any slider setting.
+
+  So: a prevention policy's ML sliders cannot be demonstrated with EICAR, and safely producing a
+  real conviction is not something a lab should do. Blocking IS demonstrable through the controls
+  that act on identity and behaviour rather than ML confidence — a hash on the IOC blocklist
+  (`ioc-blocklist-hash`, driving Execution Blocking > Custom Blocking) and a behavioural rule
+  (`custom-ioa-behavioral`). Run those for the blocking half.
+
+  ## 7. Check your work
+
+  Press **grade** on this card, or `lab grade prevention-detect-vs-block`.
 
 expect:
   console: |
-    Prevention policies — the policy assigned to Falcon Lab, and its applied state on the
-    host's detail panel. Endpoint detections should show entries from both runs, with
-    different outcomes.
+    Prevention policies — your Phase 2 duplicate assigned to Falcon Lab, and the host's detail
+    panel showing when it was applied. Endpoint detections should show one EICAR detection per
+    drop, all Informational, all with no action taken.
   detection: >
-    Two events for the same action. The second should be a prevention rather than a bare
-    detection.
+    Repeated EICARTestFileWrittenWin detections on falcon-lab-win, every one of them a bare
+    detection. The thing that changes between phases is not Falcon's verdict — it is whether
+    Defender is also acting.
 
 verify:
+  # First, because every other check on this host is meaningless in RFM: an RFM sensor loads no
+  # kernel protection, applies no prevention policy and raises no file detections. Without this
+  # the exercise fails as a silent "no detection appeared" with nothing pointing at the cause.
+  - kind: api
+    label: host is NOT in reduced functionality mode
+    assert: rfm_state
+    target: win
+    expect: "no"
+
   - kind: api
     label: a prevention policy is assigned to the Falcon Lab group
     assert: policy_group
     policy: prevention
     group: "Falcon Lab"
+
+  - kind: api
+    label: an EICAR detection reached the cloud
+    assert: detection_contains
+    contains: eicar
+    within_min: 60
+
+  # The measurable posture change of the Phase 1 -> Phase 2 promotion. Proves the policy reached
+  # the endpoint AND that Security Center registration took effect -- a stronger claim than the
+  # policy's applied flag, because it is observed on the host rather than reported by the cloud.
   - kind: endpoint
-    label: eicar file was blocked on disk
+    label: Defender stood down (Phase 2 Security Center registration)
     shell: |
-      if (Test-Path C:\lab\eicar.com) { 'STILL PRESENT' } else { 'removed' }
-    expect_contains: removed
+      $s = Get-MpComputerStatus
+      if ($s.AMRunningMode -eq 'Normal' -and $s.RealTimeProtectionEnabled) {
+        "STILL ACTIVE - co-resident, so disk state cannot attribute an action"
+      } else {
+        "stood down: " + $s.AMRunningMode
+      }
+    expect_contains: "stood down"
+
   - kind: attest
     label: understanding
     items:
-      - "I saw the same action produce a detection first and a prevention second"
-      - "I know where the host's detail panel shows when its policy was applied"
-      - "I can name at least two reasons a saved policy might not reach a host"
+      - "I read the three phase descriptions and can say which phase to START in, and why"
+      - "I saw the file disappear under Phase 1 and confirmed DEFENDER removed it, not Falcon"
+      - "I can explain why an on-disk outcome cannot attribute an action on a co-resident host"
+      - "I watched Defender go passive after Phase 2 applied, and know which setting caused it"
+      - "I can say why EICAR is never quarantined, at any prevention slider setting"
+      - "I know the automatic passive-mode step-down is Windows client behaviour, not Server"
 
 hint: >
-  The two checks are deliberately different claims. The console check says the policy is
-  ASSIGNED; the endpoint check says the behaviour actually CHANGED. If the console passes and
-  the endpoint does not, the setting was saved but never reached the host — which is precisely
-  the failure this exercise exists to teach. Give it a couple of minutes and re-grade before
-  concluding anything.
+  If nothing at all happens on the endpoint, check RFM FIRST — the grader's first check exists
+  for exactly that reason. A sensor in reduced functionality mode applies no prevention policy
+  and raises no file detections, and the Windows guest falls into RFM on its own whenever
+  Windows Update advances the build past the pinned sensor's supported range. Otherwise: is the
+  policy ENABLED (duplicates arrive disabled), is the group assigned to it, and has the host
+  actually received it — "saved" and "applied" are different claims. Give it a few minutes and
+  re-grade before concluding anything.
