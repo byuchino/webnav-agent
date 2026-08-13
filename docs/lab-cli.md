@@ -406,12 +406,39 @@ never a blank matrix that reads like "nothing is assigned".
 ./lab.py policies --by-group      # inverted: group -> the policies that hit it
 ```
 
-The console answers this question in the most expensive possible way. Policies are listed per
-**platform tab**, a policy's host groups live on that policy's own details page, and a host
-group's page does not name the policies targeting it at all. So "which policies apply to the
-Falcon Lab group?" costs one page-open per policy per platform per kind, and the answer only
-holds until someone edits something. The API returns the assignments in the list response, so
-the whole matrix is one read per kind.
+### Where the console puts it (and why the direction matters)
+
+Per the docs (`falcon-management`, "Policies" — verified in the harvested corpus, not guessed):
+click a policy name in the policy table to open its details page, which has a **Settings** tab
+and an **Assigned host groups** tab. That tab is the console's answer, and it is worth knowing
+in detail because it carries numbers nothing else shows:
+
+| Column | Meaning |
+|---|---|
+| Name | the host group |
+| **Hosts with this policy applied** | how many hosts in that group the policy *actually reached* |
+| Total hosts in group | how many hosts are in it |
+
+**The two numbers disagreeing is the whole lesson of objective 5.1.** The docs give exactly three
+reasons: the host doesn't match the policy's platform, the host is in another group assigned to a
+**higher-precedence** policy, or the policy is **pending** because the host was offline. Click a
+group name from that tab and the **Host data** section breaks it out — *Hosts with policy applied*
+/ *Hosts with policy pending* / *Hosts using other policy*.
+
+So the console does answer **policy → groups**, richly. What it does not answer is the reverse:
+a host group's own page does not name the policies targeting it, and policies are split across
+**platform tabs** and three policy kinds. "Which policies hit Falcon Lab?" costs one page-open
+per policy per platform per kind, and the answer goes stale the moment someone edits something.
+The API returns assignments in the list response, so `--by-group` is one read per kind.
+
+Use the console when you want to know **whether a policy landed** — the applied/pending/other
+counts are cloud-side truth and `./lab.py policies` deliberately does not fake them. Use the CLI
+when you want the **shape of the assignments** at a glance.
+
+Two docs facts worth carrying into any policy exercise: **a duplicated policy inherits settings
+but NOT host-group assignments** (so duplicating and forgetting to assign is a silent no-op —
+exactly the `no groups -- inert` row), and **dynamic host groups can move a host between policies
+on their own** when a condition changes.
 
 Two things the output makes visible that a tab-by-tab walk hides:
 
