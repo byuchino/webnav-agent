@@ -444,6 +444,74 @@ Precedence is per platform, first match wins, and the list is printed in the ord
 walks it (`sort=precedence.asc`). If the API rejects that sort the unsorted list still prints,
 flagged — order you cannot trust is worse than no order, so it says so rather than implying it.
 
+## Observed Windows/Falcon behaviour (2026-08-13) — measured, not assumed
+
+Four findings from driving `prevention-detect-vs-block` end to end against the live CID. Each
+was measured on `FALCON-LAB-WIN`; none of them is in the harvested docs corpus.
+
+### 1. Defender DOES flip itself to Passive Mode — on Windows client
+
+Enabling a Phase 2-derived policy (which carries **Quarantine & Security Center Registration**)
+made Windows Defender step down on its own, with no explicit action on the host:
+
+| time | `AMRunningMode` | `RealTimeProtectionEnabled` |
+|---|---|---|
+| 08:20:54 | *(P2 policy `applied=True`)* | |
+| 08:21:12 | Normal | True |
+| 08:21:41 | **Passive Mode** | True |
+| 08:22:10 | **Passive Mode** | **False** |
+
+~45 s from policy application to passive. **This is Windows *client* behaviour.** On Windows
+**Server** there is no automatic step-down — passive mode there requires an explicit
+`ForceDefenderPassiveMode` setting. So "you must disable the other AV by hand" is true on Server
+and false on client, and a scenario must say which it means.
+
+The corollary matters for exercise design: under a **Phase 1** policy there is no Security Center
+registration, so Defender stays fully active and *both* engines act on a test file. That is not a
+lab defect — Phase 1 is explicitly the co-residency policy.
+
+### 2. EICAR is NOT quarantined at Phase 2 (ML prevention = MODERATE)
+
+With `Quarantine on Write: enabled`, `Quarantine & Security Center Registration: enabled`, and
+Cloud/Sensor Anti-malware at `det=AGGRESSIVE prev=MODERATE`, EICAR produced a detection and
+nothing else — confirmed three ways:
+
+```
+alert    : name=EICARTestFileWrittenWin severity=Informational
+           pattern_disposition=0  detect=False quarantine_file=False kill_process=False
+quarantine API : no quarantined files on FALCON-LAB-WIN
+disk     : C:\lab\eicar.com still present
+```
+
+**This falsifies the premise recorded for `quarantined-files`** ("EICAR is quarantined when the
+prevention Quarantine setting is on"). It is not, at MODERATE. EICAR is an *Informational* test-file
+detection, not an ML malware conviction, and `Quarantine on Write` acts on convictions. Whether
+`prev=AGGRESSIVE` (Phase 3) convicts it is **untested** — do not assume it does.
+
+### 3. Grade attribution, never disk state
+
+`prevention-detect-vs-block` verified "the file is gone from disk". Under a Phase 1 policy the file
+*does* vanish — **Defender deletes it** (`Get-MpThreatDetection` showed two removals of
+`C:\lab\eicar.com`, ThreatID 2147519003, while Falcon's own record showed no action taken). The
+check passed while measuring the wrong product.
+
+Grade `pattern_disposition_details.quarantine_file` on the Falcon alert instead. Disk state cannot
+attribute an action when two engines are running, which is exactly the Phase 1 condition.
+
+### 4. The Windows baseline decays within hours
+
+`clean-withSensor` restores UBR **8875**. Windows Update walks it to **9168** unaided, past what the
+pinned **7.40.21306.0** sensor supports, and the host drops into RFM — observed twice in one
+session, once overnight. An RFM host applies no prevention policy and raises no file detections,
+and nothing in the lab surfaces the cause.
+
+Reverting also restores a **stale clock** (observed 63 min behind once, 7 h behind another time;
+`w32tm` reports `Source: Local CMOS Clock`, `Last Successful Sync Time: unspecified`). A skewed
+clock puts detection timestamps in the past, where a "last hour" console filter hides them.
+
+Both need fixing in `prepare()` or in the baseline itself; until then, after every Windows revert:
+check `rfm_state`, and resync the clock before trusting any timestamp.
+
 ## The web panel
 
 `./lab.py web` serves the same functions as a page, so you can run scenarios yourself without
