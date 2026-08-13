@@ -86,12 +86,26 @@ Defender is still passive.
 (that is the whole co-residency lesson — two engines, and disk state that cannot attribute an
 action). On the current guest that beat will not reproduce.
 
-**UNRESOLVED at time of writing.** The intended fix is policy-driven rather than host-side: move
-the host group back to a policy with Security Center Registration **off** (the `Falcon Lab -
-Windows` Phase 1 duplicate already is) and confirm Falcon unregisters and Defender returns to
-`Normal`. If it does, the scenario needs no host intervention — its own Phase 1 step re-arms
-Defender. If it does not, Falcon's registration is sticky and the scenario needs an explicit
-re-arm step. **Do not assume the first outcome.**
+**RESOLVED 2026-08-13 — it is reversible by policy alone, and the fix is free.** Moving the host
+group back to a policy with Security Center Registration **off** makes Falcon unregister and
+Defender re-arm itself:
+
+```
+10:35:35  host check-in; applied policy switches to the Phase 1 duplicate (pending)
+10:38:08  Passive Mode  rtp=False
+10:38:44  Normal        rtp=True     <-- re-armed, ~3 min after the policy switch
+10:39:27  applied_date recorded by the cloud
+```
+
+So `prevention-detect-vs-block` needs **no host-side intervention**: its own step 2, which puts the
+group on a Phase 1 policy, restores co-residency as a side effect. Allow ~3 minutes and verify
+`AMRunningMode` is `Normal` before running the Phase 1 beat, or the co-residency lesson silently
+won't reproduce.
+
+**Note the ordering above:** Defender re-armed at 10:38:44 but the cloud only recorded
+`applied_date` at 10:39:27, **43 s later**. The endpoint enforced the policy *before* the cloud
+said it had. `applied` is a **trailing** indicator — good for "has it definitely landed", useless
+for "has it not landed yet". When the two disagree, the host is right.
 
 Do **not** "fix" this with a Defender exclusion for `C:\lab`. It was considered and rejected: it
 suppresses a real, teachable product behaviour to make a check pass, and the phased-rollout design

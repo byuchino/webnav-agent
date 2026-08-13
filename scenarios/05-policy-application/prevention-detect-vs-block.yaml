@@ -82,6 +82,16 @@ instructions: |
   Wait for it to reach the host. "Saved" is not "applied": watch the host's detail panel, or
   `./lab.py policies` plus the host's own state. Expect single-digit minutes.
 
+  **Then confirm Defender is actually armed before you go on.** In the guest terminal:
+
+      Get-MpComputerStatus | Select-Object AMRunningMode, RealTimeProtectionEnabled
+
+  It must read `Normal` / `True`. If a previous run left this host on a Phase 2 policy, Defender
+  will still be **Passive** — and step 3's whole point evaporates, because only one engine is
+  acting. Assigning this Phase 1 policy fixes it on its own: Falcon unregisters from the Security
+  Center and Defender re-arms about **3 minutes** later, with nothing done on the host. Wait for
+  `Normal` rather than assuming it.
+
   ## 3. Drop EICAR under Phase 1 — and watch TWO products react
 
   On the eicar-win card tick **keep state**, then press **set up** (keep state matters: a normal
@@ -117,6 +127,16 @@ instructions: |
   protection goes false — with nothing done on the host. Phase 2 carries **Quarantine & Security
   Center Registration**; Phase 1 does not. Registering with the Windows Security Center is what
   makes Windows stand its own AV down.
+
+  It is reversible by policy alone, which is worth knowing before you assume you have permanently
+  altered the guest: put the group back on the Phase 1 policy and Defender re-arms itself in about
+  three minutes. Nothing on the host is ever touched in either direction.
+
+  One thing to watch while you do this: the host acts **before** the cloud admits it. In one
+  measured run Defender re-armed at 10:38:44 while the cloud only stamped `applied` at 10:39:27,
+  43 seconds later. So a policy's `applied` flag is a **trailing** indicator — it is good evidence
+  that a change HAS landed, and no evidence at all that it has not. When the host and the console
+  disagree, the host is right.
 
   Note the platform caveat: that automatic step-down is **Windows client** behaviour. On Windows
   **Server** there is no automatic passive mode — it takes an explicit setting — so on servers
@@ -201,6 +221,8 @@ verify:
       - "I watched Defender go passive after Phase 2 applied, and know which setting caused it"
       - "I can say why EICAR is never quarantined, at any prevention slider setting"
       - "I know the automatic passive-mode step-down is Windows client behaviour, not Server"
+      - "I know a policy's 'applied' flag is a TRAILING indicator — the host can already be
+         enforcing a change the cloud has not stamped yet"
 
 hint: >
   If nothing at all happens on the endpoint, check RFM FIRST — the grader's first check exists
