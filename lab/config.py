@@ -37,11 +37,18 @@ HOSTS = {
         "name": "falcon-lab-win",
         # `rfm` exists on Windows after all. It was written off as impractical to stage --
         # tamper protection blocks stopping any CS component -- but on 2026-08-12 Windows
-        # Update walked the build to 26100 UBR 9168, past what the pinned N-2 sensor 7.40
-        # supports, and the host fell into RFM unaided. Running an old sensor on a
-        # self-patching OS IS the staging mechanism. Snapshotted before it could be lost to
-        # a revert or a sensor update.
-        "snapshots": {"bare": "clean-preSensor", "sensor": "clean-withSensor",
+        # Update walked the build to 26100 UBR 9168 and the host fell into RFM unaided.
+        # NOTE the older note here claimed a "pinned N-2 sensor". That was wrong: the sensor
+        # is 7.40.21306.0 on build `21306|n` -- the LATEST offered (N-2 is 7.38.21003, parked
+        # in a disabled policy). The newest sensor available simply does not support UBR 9168,
+        # so RFM staged itself on a self-patching OS and could not have been fixed by updating.
+        #
+        # `sensor` therefore points at the PINNED baseline: identical to clean-withSensor plus
+        # Windows Update disabled, so the build stays at UBR 8875 inside the sensor's supported
+        # range. Without that pin the baseline decays into RFM within hours -- observed twice in
+        # one session. `clean-withSensor` is kept as the unpinned fallback; see
+        # docs/windows-baseline.md for everything done to this guest and why.
+        "snapshots": {"bare": "clean-preSensor", "sensor": "clean-withSensor-pinned",
                       "rfm": "clean-rfm"},
         # Windows has no ICMP by default -- never test liveness with ping.
         "probe_port": 22,

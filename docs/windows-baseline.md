@@ -21,22 +21,42 @@ already on `n`, the latest build offered (`query_combined_builds` confirms 21306
 vendor certification lagging a Windows update — a real-world condition. Pinning the OS was the
 only remaining lever.
 
-**What was done:**
+**The procedure — all five steps, in order.** Steps 3 and 4 are not optional; skipping them
+produced a baseline that booted straight into RFM, and the fault was invisible until it was
+reverted to.
 
 ```powershell
-# Group Policy: no automatic updates
+# 1. Group Policy: no automatic updates
 HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU  NoAutoUpdate = 1 (DWord)
 
-# Three services, all set to Start=4 (disabled) in the registry
+# 2. Three services, all set to Start=4 (disabled) in the registry
 HKLM\SYSTEM\CurrentControlSet\Services\wuauserv      Start = 4
 HKLM\SYSTEM\CurrentControlSet\Services\UsoSvc        Start = 4
 HKLM\SYSTEM\CurrentControlSet\Services\WaaSMedicSvc  Start = 4
+
+# 3. Clear anything ALREADY staged
+Remove-Item C:\Windows\SoftwareDistribution\Download\* -Recurse -Force
+
+# 4. Reboot, then verify UBR is unchanged        <-- the actual proof
+# 5. Only now take the snapshot
 ```
 
 **All three services matter.** Disabling `wuauserv` alone does not hold: `UsoSvc` (Update
 Orchestrator) re-triggers scans, and **`WaaSMedicSvc` (Update Medic) actively repairs disabled
 update components** and will undo the change. `WaaSMedicSvc` rejects `Set-Service` with access
 denied, which is why all three are set through the registry rather than the service API.
+
+**Steps 3–4 exist because of a real failure (2026-08-13).** Disabling Windows Update stops new
+downloads; it does **nothing about updates already downloaded**. Nine packages were sitting in
+`SoftwareDistribution\Download`, and **Windows applies staged updates during shutdown** — which is
+exactly what `snapshot_create` does before snapshotting. So the build advanced 8875 → 9168 *inside
+the snapshot operation*, after the state had been verified, and the resulting `clean-withSensor-
+pinned` booted into RFM.
+
+The lesson generalises past Windows Update: **verifying state at a moment in time is not the same
+as verifying it survives a shutdown, and a snapshot only ever captures the latter.** Reboot first,
+re-verify, then snapshot. And always test a new baseline by reverting to it — an unbootable or
+mis-captured snapshot is invisible until something rolls back to it.
 
 **The cost, stated plainly:** this guest no longer receives security updates. That is acceptable
 for a snapshot-reverted lab VM that exists to be attacked with EICAR, and unacceptable as a
