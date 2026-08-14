@@ -30,7 +30,8 @@ instructions: |
   Nobody upgraded it by hand. A sensor update policy did, because the policy that applied to
   those hosts tracks the latest version.
 
-  1. Endpoint security (or Host setup and management) > Sensor update policies. Find the
+  1. **Host setup and management > Sensor update policies** (not Endpoint security — sensor
+     update policies live with host setup, unlike prevention and response policies). Find the
      policies that exist — this tenant already has several, including custom ones. Work out
      which one currently applies to the lab hosts, and what version setting it carries.
 

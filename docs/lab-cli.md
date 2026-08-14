@@ -260,9 +260,32 @@ Real paths for this tenant:
 | API clients | `/api-clients-and-keys` |
 | Quarantined files | `/activity/quarantined-files` |
 | ML exclusions | `/configuration-v2/exclusions/machine-learning` |
+| Application abuse exclusions | `/configuration-v2/exclusions/app-abuse-prevention` |
+| Custom IOA rule groups | `/configuration/custom-ioa-groups` |
+| Sensor downloads | `/host-management/sensor-downloads` |
+| Host retention policies | `/host-management/policies/host-retention/all` |
+| Endpoint detections | `/activity-v2/detections` |
+| Response policies | `/policies/response/<platform>` |
 
 If a check reports "no API response matching", read the sitemap for your own tenant before
 adjusting anything else — routes differ by subscription.
+
+### Getting the routes: read the manifest, do not guess
+
+`/content/sitemap-v2/index.json` is the console's own route table — ~250 KB of JSON, fetched
+with the browser's session. Labels come back as i18n keys (`{i18n.t-....custom-ioa-rule-groups}`),
+so match on the **href**, not the label. Guessed paths return a page titled `Error | CrowdStrike`
+with nothing but a support link — a distinctive, easy signal that a route is wrong rather than
+slow.
+
+**Some console pages need 15+ seconds to render.** `/iocs` returned an empty tree at a 6-second
+settle and the full page at 16. A console check that "finds nothing" may simply have looked too
+early, which is indistinguishable from a genuine absence unless you allow for it.
+
+**Where a thing lives is not guessable either.** Prevention and response policies sit under
+**Endpoint security**; **sensor update policies sit under Host setup and management** — the
+scenario that hedged "Endpoint security (or Host setup and management)" was hedging because it
+had not looked.
 
 Console checks read the API response the console itself received — not the DOM. Substring
 matching rather than a JSON path language, deliberately: the console's internal API is
