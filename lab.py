@@ -258,6 +258,35 @@ def cmd_ioc(a):
         print(f"  {_mark(r.get('ok'))} {r.get('reason')}")
 
 
+def cmd_reset(a):
+    """Report what an exercise left in the CID. Reports by default; --apply does only the parts
+    the lab can do without console write scope."""
+    from lab import reset
+    items = reset.inventory()
+    manual = [i for i in items if i.get("action")]
+    auto = [i for i in items if not i.get("action")]
+
+    if not manual and not auto:
+        print(_c("  nothing outstanding", OK))
+        return
+    if manual:
+        print(_c(f"\nNeeds the console ({len(manual)}) — the lab has no write scope for these:", WARN))
+        for i in manual:
+            print(f"  {i['area']:24} {str(i['what'])[:34]:34} {i['detail'][:66]}")
+            print(f"      {_c('-> ' + i['action'], DIM)}")
+    if auto:
+        print(_c(f"\nThe lab can handle ({len(auto)}):", OK))
+        for i in auto:
+            print(f"  {i['area']:24} {str(i['what'])[:34]:34} {i['detail'][:66]}")
+
+    if a.apply:
+        print(_c("\napplying the automatable parts:", WARN))
+        for line in reset.apply_safe():
+            print(f"  {line}")
+    else:
+        print(_c("\n(report only — pass --apply to run the automatable parts)", DIM))
+
+
 def cmd_web(a):
     import uvicorn
     from lab.web import app
@@ -337,6 +366,12 @@ def main():
     s.add_argument("--description")
     s.add_argument("--dry-run", action="store_true", help="clean: show what would go")
     s.set_defaults(fn=cmd_ioc)
+
+    s = sub.add_parser("reset", help="what an exercise left in the CID, and how to undo it")
+    s.add_argument("--apply", action="store_true",
+                   help="also run the parts the lab can do (lab-owned IOCs). Console objects "
+                        "are always reported, never touched")
+    s.set_defaults(fn=cmd_reset)
 
     s = sub.add_parser("web", help="serve the control panel")
     s.add_argument("--port", type=int, default=8901)
