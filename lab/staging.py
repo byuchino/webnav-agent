@@ -44,6 +44,13 @@ def quarantine_bait(host="win", group="Falcon Lab", name="labtest.exe"):
     deliberate: a stale IOC from a previous run would block the new binary before the learner
     did anything, and the exercise would appear to work while testing nothing.
     """
+    # Idempotent: staging means "make the world look like this", not "add another one". Without
+    # this, every run of the exercise leaves another IOC blocking the hash of a binary that no
+    # longer exists -- exactly the CID clutter that write access was meant to remove. Safe
+    # because ioc_clean() can only ever delete what the lab tagged.
+    prior = falcon.ioc_clean()
+    removed = prior.get("removed") or 0
+
     marker = uuid.uuid4().hex[:12]
     cmd = _BUILD.format(marker=marker, name=name)
     rc, out, err = core.guest(host, cmd, timeout=240)
@@ -58,8 +65,9 @@ def quarantine_bait(host="win", group="Falcon Lab", name="labtest.exe"):
         return {"ok": r.get("ok"), "sha256": sha,
                 "reason": f"built {name} ({sha[:12]}...) but the IOC was not created: "
                           f"{r.get('reason')}"}
+    tidied = f"cleared {removed} stale lab IOC(s); " if removed else ""
     return {"ok": True, "sha256": sha,
-            "reason": f"built {name} ({sha[:12]}...) and blocklisted it for {group!r}; "
+            "reason": f"{tidied}built {name} ({sha[:12]}...) and blocklisted it for {group!r}; "
                       f"allow a few minutes for the sensor to receive the IOC"}
 
 

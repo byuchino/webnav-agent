@@ -99,8 +99,10 @@ instructions: |
 
   Press **grade** on this card, or `lab grade quarantined-files`.
 
-  When you are done with this exercise, `./lab.py ioc clean` removes the blocklist entry the lab
-  staged. It only ever deletes IOCs the lab tagged — your own are untouched.
+  You do not have to clean up. Staging is idempotent: each **set up** clears the lab's previous
+  blocklist entry before adding a new one, so the CID never accumulates more than one, and each
+  entry expires on its own after 7 days if you walk away. `./lab.py ioc clean` removes it now if
+  you want it gone. All three only ever touch IOCs the lab tagged — yours are untouched.
 
 expect:
   console: |
