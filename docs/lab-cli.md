@@ -497,6 +497,52 @@ disk           : still present at +5s, +20s, +40s, +65s
 *Informational* test-file detection, not an ML malware conviction, and `Quarantine on Write` acts on
 convictions — so the ML sliders never touch it. Raising prevention to AGGRESSIVE changes nothing.
 
+**Corrected 2026-08-14 — the conclusion held, the reasoning did not.** The tests above were all
+**write-only**: `eicar-win` does `Set-Content` then `Test-Path` and never executes the file. But
+the docs are explicit that quarantine is an **execution-time** action — *"when the Falcon sensor
+detects a suspicious file **attempting to run**, the file is encoded, renamed, and moved into a
+quarantine directory"*. So quarantine had been ruled out without ever exercising the path that
+quarantines.
+
+Running it settles it for a more fundamental reason: **`eicar.com` is a 16-bit DOS binary and x64
+Windows cannot load it at all** — `"The specified executable is not a valid application for this
+OS platform"`. It can never reach the execution-time quarantine path on this platform, at any
+setting. (Defender's apparent "prevention" the day before was a **file-open scan**, not an
+execution block — which is exactly why it looked like prevention and wasn't.)
+
+With Defender passive and Falcon the only engine, EICAR produced **no alert at all** — not even
+the write detection.
+
+### 2b. What DOES quarantine: a custom IOC on a real executable
+
+Measured 2026-08-14 end to end. A benign 64-bit console app compiled in place with `Add-Type`,
+its SHA256 added to the IOC blocklist with action `prevent`, then executed:
+
+```
+execution   : "Access is denied"                       (first run after staging still succeeds)
+C:\lab      : labtest.exe gone
+on host     : C:\Windows\System32\drivers\CrowdStrike\Quarantine\
+              <sha256>_9e3d16c8_quarantine   +  .csq metadata sidecar
+cloud API   : host=FALCON-LAB-WIN state=quarantined name=labtest.exe   (~90 s later)
+alert       : CloudDetect-CustomerIOC-SHA256, tactic "Custom Intelligence"
+```
+
+Requires `Quarantine & Security Center Registration` **and** `Execution Blocking > Custom
+Blocking` in the applied policy — Phase 1 has neither, Phase 2 and 3 have both.
+
+**The on-host store is the ground truth and beats the cloud by minutes.** `quarantined-files`
+checks both, so "the host has it, the console does not yet" reads as *wait* rather than *broken*.
+
+### 2c. `pattern_disposition` does NOT capture IOC-driven prevention
+
+The alert for that block reads `pattern_disposition=0`,
+`pattern_disposition_description="Detection, standard detection."`, with `quarantine_file=False`
+and `process_blocked=False` — **while the process was blocked and the file quarantined.**
+
+So the field is trustworthy for the ML/on-write path and silent about IOC-driven prevention.
+Anything grading attribution from `pattern_disposition` alone will under-report. Prefer the
+artifact — a quarantine record, a missing file, a denied execution — over the disposition flags.
+
 **Two scenarios rest on a premise that is false:**
 - `prevention-detect-vs-block` step 5 ("the file should now be quarantined rather than left in
   place") — it never will be.

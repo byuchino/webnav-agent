@@ -483,6 +483,119 @@ def custom_ioc_exists(value_contains=None, ioc_type=None, action=None):
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
 
 
+# --- WRITE side. Everything above this line only reads. ------------------------------------
+#
+# The key was read-only by choice until 2026-08-14, when IOC Management write was added -- and
+# ONLY that. The reasoning is worth keeping, because the next "just add one more scope" will
+# look equally harmless:
+#
+#   * IOCs are self-contained and trivially reversible. A wrong one blocks a hash; you delete it.
+#     A wrong PREVENTION POLICY write can silently edit `platform_default` or a stock `Phase N`
+#     template that every other exercise depends on, and nothing would announce it.
+#   * The lab must never perform the action an objective asks the LEARNER to perform. Creating an
+#     IOC is the whole point of `ioc-blocklist-hash`, so the lab must not create one there. These
+#     helpers exist for TEARDOWN, for prerequisites that are not the lesson, and for staging
+#     deliberately-broken states -- never for doing the exercise.
+#   * Anything the lab creates, the lab must not count as evidence. `custom_ioc_exists()` is the
+#     grader; if a scenario's setup created the thing it grades, the check tests the grader.
+#
+# The guardrail is a TAG, because IOCs have no name to prefix. Every lab-created IOC carries
+# LAB_TAG, and delete only ever targets that tag -- so a user-authored IOC cannot be removed by
+# this code even if the filter is wrong.
+LAB_TAG = "falcon-lab-managed"
+
+# Objects the lab must never modify, whatever a caller asks for. Nothing here is IOC-specific
+# yet; it exists so the list has an obvious home when scopes widen.
+NEVER_TOUCH = ("platform_default", "Phase 1 - initial deployment",
+               "Phase 2 - interim protection", "Phase 3 - optimal protection")
+
+VALID_IOC_ACTIONS = ("no_action", "allow", "detect", "prevent", "prevent_no_ui")
+
+
+def ioc_create(value, ioc_type="sha256", action="prevent", description="",
+               host_groups=None, platforms=("windows",), expiration_days=7):
+    """Create a lab-owned custom IOC. Needs IOC Management **write**.
+
+    Tagged LAB_TAG so `ioc_clean()` can find it and nothing else can. Expires by default: a lab
+    that forgets to clean up should decay to safe on its own rather than leave a blocking IOC in
+    the CID indefinitely.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    if action not in VALID_IOC_ACTIONS:
+        return {"ok": None, "reason": f"action must be one of {VALID_IOC_ACTIONS}"}
+    import datetime as _dt
+    body = {"type": ioc_type, "value": value, "action": action,
+            "severity": "medium", "platforms": list(platforms),
+            "description": description or "created by the Falcon lab",
+            "tags": [LAB_TAG], "applied_globally": not host_groups}
+    if host_groups:
+        try:
+            ids = [_resolve_group_id(clients, g) for g in host_groups]
+        except ConsoleUnavailable as e:
+            return {"ok": None, "reason": str(e)}
+        if any(i is None for i in ids):
+            return {"ok": False, "reason": f"unknown host group in {host_groups!r}"}
+        body["host_groups"] = ids
+    if expiration_days:
+        body["expiration"] = ((_dt.datetime.now(_dt.timezone.utc)
+                               + _dt.timedelta(days=expiration_days))
+                              .strftime("%Y-%m-%dT%H:%M:%S.000Z"))
+    try:
+        r = clients["ioc"].indicator_create(indicators=[body], comment="falcon lab")
+        code = r.get("status_code")
+        if code in (403, 401):
+            return {"ok": None, "reason": "IOC create refused (HTTP %s) -- the key needs IOC "
+                    "Management **write**, not just read" % code}
+        if code not in (200, 201):
+            errs = "; ".join(str(e.get("message")) for e in (r.get("body") or {}).get("errors")
+                             or [])[:160]
+            return {"ok": False, "reason": f"IOC create failed (HTTP {code}) {errs}"}
+        res = ((r.get("body") or {}).get("resources") or [{}])[0]
+        return {"ok": True, "id": res.get("id"),
+                "reason": f"created {ioc_type} IOC {value[:16]}... action={action}"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"IOC create failed: {str(e)[:140]}"}
+
+
+def ioc_clean(dry_run=False):
+    """Delete every IOC tagged LAB_TAG. Never touches anything else -- that is the whole point.
+
+    Filters CLIENT-SIDE on the tag rather than trusting an FQL `tags:` filter: the same
+    server-side matching that returned nothing for a host group that plainly exists would here
+    mean deleting the wrong set, and a filter bug that under-matches is an annoyance while one
+    that over-matches destroys a user's IOCs.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        r = clients["ioc"].indicator_combined(limit=500)
+        if r.get("status_code") != 200:
+            return {"ok": None, "reason": f"IOC read failed (HTTP {r.get('status_code')})"}
+        mine = [i for i in ((r.get("body") or {}).get("resources") or [])
+                if LAB_TAG in (i.get("tags") or [])]
+        if not mine:
+            return {"ok": True, "removed": 0, "reason": f"no IOCs tagged {LAB_TAG}"}
+        vals = ", ".join((i.get("value") or "")[:12] for i in mine[:4])
+        if dry_run:
+            return {"ok": True, "removed": 0,
+                    "reason": f"would delete {len(mine)} lab IOC(s): {vals}"}
+        d = clients["ioc"].indicator_delete(ids=[i["id"] for i in mine],
+                                            comment="falcon lab teardown")
+        code = d.get("status_code")
+        if code in (403, 401):
+            return {"ok": None, "reason": f"IOC delete refused (HTTP {code}) -- key needs IOC "
+                                          f"Management write"}
+        if code != 200:
+            return {"ok": False, "reason": f"IOC delete failed (HTTP {code})"}
+        return {"ok": True, "removed": len(mine),
+                "reason": f"deleted {len(mine)} lab IOC(s): {vals}"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"IOC delete failed: {str(e)[:140]}"}
+
+
 def ioa_rule_group_enabled(name):
     """Is there a custom IOA rule group named `name` that is enabled? (Custom IOAs read scope.)
 

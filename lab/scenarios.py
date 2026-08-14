@@ -39,7 +39,7 @@ import pathlib
 
 import yaml
 
-from . import config, core, falcon, sensor
+from . import config, core, falcon, sensor, staging
 
 REQUIRED = ("id", "name", "target", "mode")
 VALID_TARGETS = set(config.HOSTS) | {"console"}
@@ -179,6 +179,18 @@ def run(sid, skip_revert=False, progress=None):
         s.get("steps") if s["mode"] == "auto" else [])
     for i, step in enumerate(steps or [], start=1):
         name = step.get("name", f"step {i}")
+        # A `stage:` step runs LAB-side (API + guest together) rather than as a guest shell.
+        # It exists for prerequisites that are not the lesson -- see lab/staging.py for the two
+        # rules that constrain what may be staged.
+        if step.get("stage"):
+            say(f"step {i}: {name}")
+            r = staging.run(step["stage"], s)
+            result["steps"].append({"n": i, "name": name, "ok": r.get("ok"),
+                                    "out": str(r.get("reason", ""))[:400]})
+            if r.get("ok") is not True and step.get("required", True):
+                result["failed_at"] = i
+                break
+            continue
         cmd = (step.get("shell") or "").strip()
         if not cmd:
             continue

@@ -240,6 +240,24 @@ def cmd_policies(a):
              DIM))
 
 
+def cmd_ioc(a):
+    """Lab-owned IOCs only. `clean` can only ever remove what the lab tagged."""
+    if a.action == "list":
+        r = falcon.custom_ioc_exists()
+        print(f"  {r.get('reason')}")
+        d = falcon.ioc_clean(dry_run=True)
+        print(f"  lab-owned: {d.get('reason')}")
+    elif a.action == "add":
+        if not a.value:
+            sys.exit("ioc add needs a value, e.g. ./lab.py ioc add <sha256>")
+        r = falcon.ioc_create(a.value, a.type, a.action_on, host_groups=[a.group] if a.group
+                              else None, description=a.description or "")
+        print(f"  {_mark(r.get('ok'))} {r.get('reason')}")
+    elif a.action == "clean":
+        r = falcon.ioc_clean(dry_run=a.dry_run)
+        print(f"  {_mark(r.get('ok'))} {r.get('reason')}")
+
+
 def cmd_web(a):
     import uvicorn
     from lab.web import app
@@ -308,6 +326,17 @@ def main():
     s.add_argument("kind", nargs="?", choices=list(falcon.VALID_POLICY_KINDS))
     s.add_argument("--by-group", action="store_true", help="invert: group -> policies")
     s.set_defaults(fn=cmd_policies)
+
+    s = sub.add_parser("ioc", help="lab-owned custom IOCs (needs IOC Management write to add)")
+    s.add_argument("action", choices=["list", "add", "clean"], nargs="?", default="list")
+    s.add_argument("value", nargs="?", help="the indicator, e.g. a sha256")
+    s.add_argument("--type", default="sha256")
+    s.add_argument("--action-on", default="prevent", choices=list(falcon.VALID_IOC_ACTIONS),
+                   help="what the sensor does on a match (default prevent)")
+    s.add_argument("--group", help="host group to scope it to (default: applied globally)")
+    s.add_argument("--description")
+    s.add_argument("--dry-run", action="store_true", help="clean: show what would go")
+    s.set_defaults(fn=cmd_ioc)
 
     s = sub.add_parser("web", help="serve the control panel")
     s.add_argument("--port", type=int, default=8901)
