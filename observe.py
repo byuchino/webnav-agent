@@ -17,6 +17,26 @@ For a remote browser, tunnel first and set CDP_PORT (see README):
   ssh -N -L 9333:127.0.0.1:9222 <host>
   CDP_PORT=9333 ./observe.py --list
 
+## A blank console page is usually a dead RENDERER, not a Falcon problem
+
+Seen 2026-08-14: Real Time Response opened to a blank tab every time. It looked like a session
+or entitlement failure and was neither. The signature of a crashed renderer:
+
+  * the target still exists and CDP ATTACHES fine, but every `Runtime.evaluate` TIMES OUT
+    (which also hangs `--once`, so this tool appears to be the broken thing)
+  * `url` and `title` come back empty in `--list`
+  * `Inspector.targetCrashed` fires
+  * **zero network activity** — no requests, no failures, no console errors
+
+That last one is the discriminator. An expired token, a missing role or an offline host all
+generate traffic and render an error; a dead renderer never reaches the network at all. So if
+you see nothing on the wire, stop looking at the product.
+
+Confirm by opening the same page in another browser or machine. If it works there, restart
+Chrome on the debug host — that fixed it, and the crashing profile had dumps in
+`C:\cdp-profile\Crashpad\reports` going back a week. An SSH tunnel to :9222 survives the
+restart; the new Chrome reclaims the port.
+
 ## What "read-only" means here
 
 `ReadOnlyClient` refuses the CDP methods that act on the page: the whole `Input` domain,
