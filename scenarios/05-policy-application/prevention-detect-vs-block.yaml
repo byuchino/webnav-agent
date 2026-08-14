@@ -22,8 +22,12 @@ teaches: |
   - That "saved" and "applied" are different claims, visible as different API fields
   - That co-residency is a real state with real consequences: two AV engines, and disk state
     that cannot tell you which one acted
-  - That an on-disk outcome is NOT evidence about Falcon — attribution comes from the
-    detection's own pattern_disposition, never from the filesystem
+  - That an on-disk outcome is NOT evidence about Falcon: a file can vanish because a
+    DIFFERENT product removed it, so attribution has to come from Falcon's own record
+  - That `pattern_disposition` is the right record HERE and is not universal: it reports the
+    ML / on-write path faithfully and is silent about IOC-driven prevention, so the durable
+    habit is to look for the ARTIFACT — a quarantine record, a denied execution — rather than
+    to trust one field everywhere
   - Why EICAR can never demonstrate quarantine, and what that says about detections vs
     convictions
 
@@ -96,6 +100,13 @@ instructions: |
        `EICARTestFileWrittenWin`, severity **Informational**, and its pattern disposition shows
        **no action taken** — Falcon detected and did nothing else. Correct for a detect-mode
        policy.
+
+       Trust that field here, but do not over-generalise it. For this ML / on-write path it
+       reports faithfully. It does **not** capture IOC-driven prevention: in
+       `quarantined-files` a blocklisted binary is denied execution and quarantined while its
+       alert still reads `pattern_disposition=0`, *"Detection, standard detection."*, with
+       every action flag false. A field that is silent about a whole class of prevention is a
+       poor universal test — prefer the artifact it left behind.
     b. **The file on disk.** Very likely **gone**.
     c. **Who removed it.** In the guest terminal:
        `Get-MpThreatDetection | Select-Object -First 2 InitialDetectionTime, Resources`
@@ -215,6 +226,8 @@ verify:
       - "I know the automatic passive-mode step-down is Windows client behaviour, not Server"
       - "I know a policy's 'applied' flag is a TRAILING indicator — the host can already be
          enforcing a change the cloud has not stamped yet"
+      - "I know pattern_disposition reports this ML / on-write path but is silent about
+         IOC-driven prevention, so an artifact beats a single field as evidence"
 
 hint: >
   If nothing at all happens on the endpoint, check RFM FIRST — the grader's first check exists
