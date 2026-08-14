@@ -1,5 +1,5 @@
 id: ml-exclusion
-name: Exclusions — the three types, and an ML exclusion you can verify
+name: Exclusions — five tabs, three blast radii, and an ML exclusion you can verify
 target: console
 mode: manual
 domain: 6
@@ -10,13 +10,18 @@ requires: [lab-host-group]
 
 summary: >
   Exclusions tell Falcon to stop acting on something — and the exam cares that you know which
-  type does what, because they differ enormously in blast radius. You will compare the three
-  types, then configure a Machine Learning exclusion for a path and assign it to the Falcon Lab
-  group. The grader confirms it via the API; the effect itself is understood, not triggered
+  type does what, because they differ enormously in blast radius. The console shows FIVE tabs,
+  but only three sit on that scale; the other two are a different key (certificate) and a
+  different job (application abuse). You will compare them, then configure a Machine Learning
+  exclusion for a path and assign it to the Falcon Lab group. The grader confirms it via the API; the effect itself is understood, not triggered
   (see the note below on why).
 
 teaches: |
-  - The three exclusion types and their scope, smallest blast radius to largest:
+  - That the Exclusions page has FIVE tabs, and which of them are comparable: three sit on a
+    blast-radius scale, ML (certificate) is the same job as ML (file path) keyed on the signer
+    rather than the location, and Application abuse approves RMM tools against an
+    application-abuse prevention policy rather than suppressing a false positive
+  - The three comparable types and their scope, smallest blast radius to largest:
       * IOA exclusion — suppresses specific IOA-rule detections only
       * Machine Learning exclusion — suppresses only ML detections/preventions on a path; IOAs,
         IOCs and other detection logic on that path still fire
@@ -30,14 +35,43 @@ teaches: |
 instructions: |
   No guest is touched here — this is console configuration plus understanding.
 
-  1. COMPARE THE TYPES FIRST. Endpoint security > Configure > Exclusions. Look at the three
-     tabs — Sensor visibility, Machine learning, IOA (names may vary slightly). Read what each
-     says it does. The mental model to lock in: Sensor Visibility is the biggest hammer (no
-     events at all for the path), ML is narrower (only ML stops acting), IOA is narrowest
-     (specific rule detections). Choosing the wrong one either misses the false positive you were
-     trying to silence or blinds you far more than intended.
+  1. COMPARE THE TYPES FIRST. Endpoint security > Configure > Exclusions. There are **five**
+     tabs, and they are not five points on one scale — they are two different jobs:
 
-  2. CREATE A MACHINE LEARNING EXCLUSION. On the Machine learning tab, add an exclusion:
+       - Machine learning (file path) exclusions
+       - Machine learning (certificate) exclusions
+       - IOA exclusions
+       - Sensor visibility exclusions
+       - Application abuse exclusions
+
+     **Three of them answer "stop Falcon reacting to this thing", and they differ by BLAST
+     RADIUS** — this is the mental model to lock in, and what the exam probes:
+
+       - **IOA** — narrowest. Suppresses specific rule detections; everything else still watches
+       - **Machine learning** — narrower still than you might assume: only ML stops acting. IOAs
+         and everything else continue
+       - **Sensor visibility** — the biggest hammer. No events at all for that path, so the
+         sensor is blind there and every other control loses its input too
+
+     Choosing the wrong one either misses the false positive you were trying to silence, or
+     blinds you far more than you intended.
+
+     **The other two are different axes, not more of the same:**
+
+       - **Machine learning (certificate)** is the same job as ML (file path) by a different
+         key — exclude what a trusted publisher SIGNED rather than where a file happens to sit.
+         Better where a vendor's binaries move or auto-update, since a path exclusion goes stale
+         and a certificate does not
+       - **Application abuse** is not false-positive suppression at all. It designates specific
+         RMM tools as approved so an application-abuse *prevention policy* will not block them —
+         letting you run default-prevent on remote-management tooling while permitting the ones
+         you sanction. Also reachable at Endpoint security > Application Abuse
+
+     For the rest of this exercise only the blast-radius three matter. But knowing there are five
+     is the difference between reading that page and guessing at it.
+
+  2. CREATE A MACHINE LEARNING EXCLUSION. On the **Machine learning (file path)** tab — not
+     the certificate one — add an exclusion:
        - Path / value: something containing **FalconLabMLX**, e.g. `C:\FalconLabMLX\*`
          (the grader matches on that distinctive folder name, whatever glob format the console
          uses).
@@ -77,14 +111,16 @@ verify:
   - kind: attest
     label: understanding
     items:
-      - "I can rank the three exclusion types by blast radius (IOA < ML < Sensor Visibility)"
+      - "I can rank the three comparable types by blast radius (IOA < ML < Sensor Visibility)"
+      - "I know the page has five tabs, and that certificate and application-abuse exclusions
+         are a different key and a different job rather than more points on that scale"
       - "I know an ML exclusion suppresses only ML — IOAs and IOCs still act on that path"
       - "I scoped the exclusion to the Falcon Lab group, not to all hosts"
       - "I can explain why an exclusion is a deliberate blind spot and a last resort"
 
 hint: >
-  If the check reads absent: confirm the exclusion is on the MACHINE LEARNING tab (not Sensor
-  visibility or IOA), that its path actually contains FalconLabMLX, and that it is applied to the
+  If the check reads absent: confirm the exclusion is on the MACHINE LEARNING (FILE PATH) tab —
+  not certificate, sensor visibility, IOA or application abuse — that its path actually contains FalconLabMLX, and that it is applied to the
   Falcon Lab group or globally — an exclusion assigned to no group (or a different one) will not
   match. The grader substring-matches the path value, so the exact glob format does not matter,
   only that FalconLabMLX appears in it.
