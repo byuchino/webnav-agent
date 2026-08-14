@@ -153,6 +153,10 @@ def prepare(sid, skip_revert=False, progress=None):
             progress("no guest to prepare")
         return None
     r = core.revert(s["target"], s["baseline"], progress=progress)
+    # Before the sensor settles, not after: the clock fix has to land before anything starts
+    # timestamping, or the first detections of the exercise carry the snapshot's stale clock.
+    if r.get("ready"):
+        core.windows_post_revert(s["target"], progress=progress)
     if s["baseline"] in ("sensor", "rfm") and r.get("ready"):
         settle_sensor(s["target"], progress=progress)
     return r

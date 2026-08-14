@@ -36,17 +36,9 @@ setup:
       Write-Output 'ready'
     expect_contains: ready
 
-  # A reverted snapshot restores the clock that was in the snapshot, which has been observed
-  # 63 minutes and 7 hours behind real time. A skewed clock puts detections in the past, where
-  # a "last hour" console filter hides them. Reported rather than asserted: if NTP is
-  # unreachable the exercise should still run, but you should know the clock is wrong.
-  - name: resync the guest clock (a revert restores a stale RTC)
-    shell: |
-      w32tm /config /manualpeerlist:"time.windows.com,0x9 pool.ntp.org,0x9" /syncfromflags:manual /update | Out-Null
-      Restart-Service w32time
-      Start-Sleep -Seconds 3
-      w32tm /resync /force 2>&1 | Out-Null
-      "guest UTC now: " + (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")
+  # The clock resync and the Windows Update re-pin used to live here. They now run for EVERY
+  # Windows revert in core.windows_post_revert(), because every Windows scenario needs both and
+  # only this one had them. Nothing to do here.
 
 instructions: |
   Windows is back at a clean sensor baseline with no EICAR file present.

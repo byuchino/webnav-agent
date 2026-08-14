@@ -58,6 +58,24 @@ as verifying it survives a shutdown, and a snapshot only ever captures the latte
 re-verify, then snapshot. And always test a new baseline by reverting to it — an unbootable or
 mis-captured snapshot is invisible until something rolls back to it.
 
+**The pin ERODES on a running guest — the scheduled tasks survive all of the above.** Checked the
+next morning (2026-08-14): `wuauserv` had been reset from `Start=4` to `3` (Manual) and **six
+packages were staged again**, on a guest that had sat idle overnight. UBR had not moved, so
+nothing was lost, but it was one shutdown away from moving.
+
+The cause is the ~12 tasks under `\Microsoft\Windows\UpdateOrchestrator\` (`Schedule Scan`,
+`Schedule Work`, `UIEOrchestrator`, …). They run on their own timers, and `Start=3` lets Task
+Scheduler start the service on demand. They are **SYSTEM-owned: `Disable-ScheduledTask` as
+`labadmin` fails on 11 of 12**, so disabling them is not available without taking ownership.
+
+Fighting the task scheduler is the wrong trade. Instead the pin is **re-asserted on every
+revert** by `core.windows_post_revert()` — reset `wuauserv` to `Start=4` (a *disabled* service
+cannot be started on demand, which closes the hole `Manual` opens), clear the download cache, and
+resync the clock. One ssh round trip, idempotent, and it cannot lose a race it does not enter.
+
+**So: never snapshot a guest that has been running a while without re-asserting the pin first.**
+That is the path back to the bad baseline.
+
 **The cost, stated plainly:** this guest no longer receives security updates. That is acceptable
 for a snapshot-reverted lab VM that exists to be attacked with EICAR, and unacceptable as a
 pattern to copy anywhere else. It also **freezes one half of a genuinely instructive situation** —

@@ -5,6 +5,7 @@ the CLI, because the same calls back the web panel — and because terse, predic
 is the whole point of this package: a scenario run should cost a few lines, not a
 conversation.
 """
+import datetime as _dt
 import shlex
 import socket
 import subprocess
@@ -220,6 +221,46 @@ def guest(name, command, timeout=180, check=False):
     if check and rc != 0:
         raise LabError(f"{name}: {err or out}")
     return rc, out, err
+
+
+def windows_post_revert(name, progress=None):
+    """Re-assert the two things a Windows revert quietly breaks. Idempotent; safe to re-run.
+
+    A snapshot restores the clock it was taken with -- observed 63 min and 7 h behind. Skewed
+    clocks put detections in the past, where a console "last hour" filter hides them, so this
+    reads as "the exercise produced no detection" when it produced one perfectly well.
+
+    And the OS pin erodes. `docs/windows-baseline.md` disables wuauserv/UsoSvc/WaaSMedicSvc,
+    but the ~12 scheduled tasks under \\Microsoft\\Windows\\UpdateOrchestrator survive: they are
+    SYSTEM-owned, `Disable-ScheduledTask` as labadmin fails on all but one, and they reset
+    wuauserv to Manual and re-stage updates on their own (observed overnight 2026-08-13: Start
+    4 -> 3, six packages re-downloaded). Windows applies staged updates AT SHUTDOWN, so a drifted
+    guest that gets snapshotted bakes in a build past the sensor's supported range -- exactly the
+    bad baseline that shipped once already.
+
+    Fighting the task scheduler is the wrong trade. Re-asserting a disabled service and an empty
+    download cache costs one ssh round trip per revert and cannot lose.
+    """
+    say = progress or (lambda _m: None)
+    h = config.host(name)
+    if h["os"] != "windows":
+        return None
+    # The guests run with TZ=UTC, so a UTC string is also their local time.
+    now = _dt.datetime.now(_dt.timezone.utc).strftime("%m/%d/%Y %H:%M:%S")
+    ps = "; ".join([
+        f'Set-Date -Date "{now}" | Out-Null',
+        'Stop-Service wuauserv -Force -ErrorAction SilentlyContinue',
+        r'Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\wuauserv" '
+        '-Name Start -Value 4 -ErrorAction SilentlyContinue',
+        r'Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force '
+        '-ErrorAction SilentlyContinue',
+        r'Write-Output ("UBR=" + (Get-ItemProperty '
+        r'"HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion").UBR)',
+    ])
+    rc, out, _ = guest(name, ps, timeout=120)
+    ubr = (out or "").strip().split("UBR=")[-1].strip() if "UBR=" in (out or "") else "?"
+    say(f"clock resynced, update pin re-asserted (UBR {ubr})")
+    return {"ok": rc == 0, "ubr": ubr}
 
 
 def push(name, local_path, remote_path, timeout=600):
