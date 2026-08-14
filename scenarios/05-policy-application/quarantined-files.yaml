@@ -75,12 +75,34 @@ instructions: |
 
   ## 3. Review it in the console — this is the job
 
-  Endpoint security > Monitor > **Quarantined files**. Find `labtest.exe` on **FALCON-LAB-WIN**
-  and open it. Note the **hash**, the **originating path**, the **host**, and the **state** —
-  this is the record you triage during an incident, and everything you need is here.
+  Endpoint security > Monitor > **Quarantined files**. The table lists **Date of Quarantine,
+  File Name, Hostname, Agent ID, Behavioral Threat Score, User, Status** and an Actions column.
+  Find `labtest.exe` on **FALCON-LAB-WIN** and open it to expand the summary panel:
 
-  Expect it a minute or two after the host quarantines it: the host acts first and the console
-  catches up. If the file is gone from disk but the console is empty, the answer is *wait*.
+      STATUS            Quarantined
+      HOSTNAME          FALCON-LAB-WIN
+      FILE NAMES        \Device\HarddiskVolume3\lab\labtest.exe
+      USERNAME          labadmin
+      SHA 256           a63270716c51...
+      DATE QUARANTINED  / DATE UPDATED
+
+  Read those field names carefully, because several are not what you would guess. It is
+  **SHA 256**, not "hash". It is **FILE NAMES** — plural, and it holds the *full device path*
+  (`\Device\HarddiskVolume3\...`), not a bare filename, which is why the table's `File Name`
+  column and this field show different things. **USERNAME** is the account the file ran as —
+  during a real triage that is often the first thing you want.
+
+  **STATUS** is a defined set, not free text, and the filter panel shows all of it:
+  *Quarantined, Released, Deleted, Cleaned, Release Pending, Delete Pending*. The two "Pending"
+  values are the offline case in step 5 — the action is recorded and waiting for the host.
+
+  The panel also carries **QuickScan Pro Analysis** with a THREAT VERDICT, and tabs for Machine
+  Learning and Sensor Visibility exclusions — an exclusion is the usual answer to a file you
+  decide is legitimate.
+
+  Expect the record a minute or two after the host quarantines it: the host acts first and the
+  console catches up. If the file is gone from disk but the console is empty, the answer is
+  *wait*.
 
   ## 4. Optional — see the mechanism, the way you'd actually reach a host
 
@@ -101,10 +123,16 @@ instructions: |
 
   ## 5. Learn the actions (read; try Release if you like)
 
+  Each row has **Release** and **Delete** in its Actions column. **Undo Release** is different:
+  it only appears on the toolbar above the table and stays disabled until you tick a row's
+  checkbox — so it is a selection action, not a per-row one, which is easy to miss when you go
+  looking for it.
+
   **Release** restores the file and the sensor stops treating it as malicious on that host only.
   **Undo Release** re-arms it — re-quarantined on next execution, not immediately. **Delete**
   removes it. And the offline rule: a release for an offline host lands when it reconnects within
-  30 days, otherwise the file stays quarantined.
+  30 days, otherwise the file stays quarantined. That waiting state is what `Release Pending` and
+  `Delete Pending` in the STATUS filter mean.
 
   ## 6. Check your work
 
@@ -118,7 +146,8 @@ instructions: |
 expect:
   console: |
     Endpoint security > Monitor > Quarantined files showing labtest.exe on FALCON-LAB-WIN with
-    its hash, originating path, and quarantined state.
+    STATUS "Quarantined", and a summary panel carrying SHA 256, FILE NAMES (the full
+    \Device\HarddiskVolume3\... path) and USERNAME.
   detection: >
     A CloudDetect-CustomerIOC-SHA256 alert on falcon-lab-win, tactic "Custom Intelligence" —
     the sensor acting on YOUR blocklist rather than on its own verdict.
@@ -164,7 +193,9 @@ verify:
     label: understanding
     items:
       - "I saw the binary run once, then be denied after the IOC reached the sensor"
-      - "I found the record in Quarantined files and can read its hash, path, host, and state"
+      - "I found the record and can read its STATUS, HOSTNAME, FILE NAMES, USERNAME and SHA 256 —
+         and noticed FILE NAMES carries the full device path, not a bare filename"
+      - "I can name the STATUS values, including the two Pending ones and what they mean"
       - "I can explain why quarantine is an EXECUTION-time action, not a write-time one"
       - "I know a quarantined file is moved and encoded, not deleted — and that the console is
          where you act on it, not the host's filesystem"
