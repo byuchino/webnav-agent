@@ -25,9 +25,22 @@ teaches: |
         is global to your user, the same on every host and OS
       * the POLICY gate — the response policy covering the host's group must have **run** enabled
         (and **put** / **Custom Scripts** for those); all are OFF in the Default response policy
-  - That neither gate is per-session: once the role is granted and the policy is set, the
-    capability is there for every RTR session to a covered host — you do not re-enable it per
-    connection
+  - That neither gate is per-session in the sense of needing re-enabling: set them once and the
+    capability is there for every future session. But an OPEN session is a different matter —
+    RTR provisions its command set at CONNECT time from role + policy, and the two halves age
+    differently: a ROLE change is re-evaluated live, a POLICY change is not. So after enabling
+    `run` you must **disconnect and reconnect**; the session you already had will keep refusing
+  - That a settings edit and a relationship change propagate differently, which decides what
+    you should watch:
+      * **settings edit** (this one — a policy toggle, a prevention slider): the policy's
+        `settings_hash` changes, the host's `applied` drops to False with `applied_date` cleared,
+        then returns. That IS the pending/applied dance, and it is worth waiting for
+      * **relationship change** (assigning an IOA rule group to a policy, as in
+        `custom-ioa-behavioral`): the settings are untouched, so `settings_hash` does not move
+        and the host never leaves the policy — there is NO visible pending state. Waiting for
+        one means waiting forever
+    The rule behind it: a settings edit makes the host's copy stale and it must be re-sent;
+    attaching a group invalidates nothing about that copy
   - That RTR runs as SYSTEM on Windows, so a binary you `run` executes with full privilege
   - The Linux contrast: no `run`/`put` there at all — you execute code with **`runscript`**
     (Custom Scripts), a separate policy setting; see rtr-response-policy-lnx
@@ -62,14 +75,30 @@ instructions: |
 
   2. OPEN THE POLICY LOCK. Endpoint security > Response policies. On the policy assigned to the
      **Falcon Lab** group, enable **run** (and, if you want to try uploads, **put**; for scripts,
-     **Custom Scripts**). Save, and enable the policy. Wait for the host to receive it — the
-     host's detail panel shows when the policy was applied; "Changes pending" means not yet.
+     **Custom Scripts**). Save, and enable the policy.
+
+     **`run` is under "High risk commands", NOT under "Scripts".** Custom Scripts and Falcon
+     Scripts sit a few lines above and are worded *"…roles to **run** custom scripts"*, which
+     reads like the thing you want and is not — those govern `runscript` and `falconscript`. The
+     checkbox you need is literally labelled `run`, described "Run any executable on the remote
+     host", alongside `get` / `put` / `memdump`.
+
+     Now wait for the host to receive it, and expect three distinct stages — the cloud is
+     several minutes ahead of the endpoint:
+
+       1. **saved** — the policy shows `run` enabled immediately
+       2. **recomputed** — the host's `applied` drops to False, `applied_date` clears, its
+          settings hash changes. Measured ~2.5 min after save
+       3. **applied** — back to True. This waits on the host's next check-in, whose cadence is
+          irregular; ten minutes is not unusual and is not a fault
 
   3. OPEN THE ROLE LOCK, if it was not already. `run` needs **RTR Administrator**, not merely
      Active Responder. Confirm your user holds it. Remember the role is global — granting it once
      covers every host and OS; you are not enabling anything Windows-specific here.
 
-  4. NOW RUN THE BINARY. Reconnect if your session dropped, and run:
+  4. NOW RUN THE BINARY. **Disconnect and reconnect first — not optional.** A session provisions
+     its command set at connect time, so one opened before the policy landed will keep answering
+     `Command is disabled by policy` no matter how long you wait. Then run:
 
          run "C:\Windows\System32\cmd.exe" -CommandLine="/c mkdir C:\rtr-run-proof"
 

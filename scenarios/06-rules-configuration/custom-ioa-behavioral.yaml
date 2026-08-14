@@ -25,9 +25,15 @@ teaches: |
     performs the behaviour
   - Rule actions — Monitor (log only) vs Detect vs Prevent — and severity
   - That a propagation delay still applies — the rule must reach the host before a trigger will
-    detect — but that it is INVISIBLE here: attaching a rule group does not change the policy's
-    settings_hash and does not take the host off the policy, so the pending/applied dance you
-    see when editing a setting never happens. Not every change announces itself the same way
+    detect — but that it is INVISIBLE here, and exactly why:
+      * a **settings edit** (a prevention slider, a response-policy toggle) changes the policy's
+        `settings_hash`, so the host's copy is stale and must be re-sent: `applied` drops to
+        False, `applied_date` clears, then both return. That is the pending/applied dance
+      * a **relationship change** — attaching a rule group to a policy, which is what step 3
+        does — touches no settings. The hash does not move and the host never leaves the policy,
+        so there is nothing to show as un-applied and no dance to wait for
+    Same rule, both directions: a settings edit invalidates the host's copy, attaching a group
+    does not. `rtr-run-binaries` is the worked contrast — enabling `run` there DOES dip
 
 setup:
   - name: confirm the sensor is healthy
