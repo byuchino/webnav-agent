@@ -350,14 +350,18 @@ async def main():
             return 1
         print(f"{len(tabs)} tab(s) on CDP port {cdp.CDP_PORT}:\n")
         for t in tabs:
-            print(f"  {t.get('title', '')[:60]}\n    {t.get('url', '')[:100]}\n")
+            # --list prints URLs directly, and RTR puts the AID in its query string --
+            # so this path leaks exactly what report() is careful about. Scrub BEFORE
+            # truncating: a slice can cut a secret in half and defeat an exact-value match.
+            print(f"  {_scrub(t.get('title', ''))[:60]}\n"
+                  f"    {_scrub(t.get('url', ''))[:100]}\n")
         return 0
 
     t = pick(tabs, a.match)
     if not t:
         print(f"no tab matching {a.match!r}. Try --list.", file=sys.stderr)
         return 2
-    print(f"observing (read-only): {t.get('title', '')}\n  {t.get('url', '')}")
+    print(f"observing (read-only): {_scrub(t.get('title', ''))}\n  {_scrub(t.get('url', ''))}")
 
     async with ReadOnlyClient(t["webSocketDebuggerUrl"]) as c:
         await asyncio.sleep(0.3)
