@@ -238,25 +238,76 @@ def pick(tabs, match):
     return None
 
 
+# --- §13, page-text half. The network recorder already strips credential HEADERS; this is the
+# other leak. A console renders identifiers as ordinary page text, so a snapshot faithfully
+# reproduces them into a terminal, a log and a pasted transcript -- which is exactly where a
+# CrowdStrike **AID** (identifies the host) and **CID** (identifies the tenant, and is what lets
+# a sensor register into it) must never end up. Observed 2026-08-14: a Quarantined Files page
+# put a full AID into a report, in a repo whose own CLI masks the same value.
+#
+# The hard part is that an AID is 32 hex characters and so is a POLICY id -- indistinguishable by
+# shape. Masking every 32-hex token would have destroyed the policy IDs that made the prevention
+# work readable. So the default is EXACT-VALUE redaction: you say what is secret, and it is
+# masked wherever it appears. `--redact-hex32` is the blunt instrument for when you would rather
+# lose policy IDs than risk a leak.
+_REDACT_FILE = os.path.expanduser("~/.observe-redact")
+_HEX32 = re.compile(r"\b[0-9a-fA-F]{32}\b")
+_redact_values = []
+_redact_hex32 = False
+
+
+def _load_redactions(cli_values):
+    """Exact strings to mask: --redact, $OBSERVE_REDACT, then ~/.observe-redact (one per line).
+
+    A file keeps the values out of shell history and out of the process list, which matters
+    because the whole point of the list is that its contents are sensitive.
+    """
+    out = list(cli_values or [])
+    out += [v for v in (os.environ.get("OBSERVE_REDACT") or "").split(",") if v.strip()]
+    try:
+        with open(_REDACT_FILE) as fh:
+            out += [ln.strip() for ln in fh
+                    if ln.strip() and not ln.lstrip().startswith("#")]
+    except OSError:
+        pass
+    # Longest first: masking a substring before its container would leave a partial value behind.
+    return sorted({v.strip() for v in out if v.strip()}, key=len, reverse=True)
+
+
+def _scrub(text):
+    """Mask known-secret values in anything about to be printed. Never raises: a redaction bug
+    must not take out the observer, but it also must not silently pass the value through, so
+    failure here would be worse than a crash -- keep it trivial."""
+    if not text:
+        return text
+    s = str(text)
+    for v in _redact_values:
+        if v and v in s:
+            s = s.replace(v, f"[redacted:{len(v)}ch]")
+    if _redact_hex32:
+        s = _HEX32.sub(lambda m: f"[redacted:{m.group(0)[:4]}...]", s)
+    return s
+
+
 async def report(client, shot=None, net=None, show_tree=True):
     await snapshot.settle(client, max_ms=1500)
     # mark=False: never tag elements in a DOM someone else is looking at.
     env = await snapshot.build(client, mark=False)
     print(f"\n{'=' * 72}")
-    print(f"  {time.strftime('%H:%M:%S')}  {env.get('title', '')}")
-    print(f"  {env.get('url', '')}")
+    print(f"  {time.strftime('%H:%M:%S')}  {_scrub(env.get('title', ''))}")
+    print(f"  {_scrub(env.get('url', ''))}")
     print(f"  {env.get('stats', {})}")
     if show_tree:
         print(f"{'-' * 72}")
-        print(snapshot.render(env))
+        print(_scrub(snapshot.render(env)))
     if net is not None:
         rows = net.drain()
         if rows:
             print(f"{'-' * 72}\n  API CALLS (credentials redacted):")
             for r in rows[-12:]:
-                print(f"   {r['method']:5} {r['status'] or '...'}  {r['url']}")
+                print(f"   {r['method']:5} {r['status'] or '...'}  {_scrub(r['url'])}")
                 if r["body"]:
-                    print(f"         body: {r['body'][:200]}")
+                    print(f"         body: {_scrub(r['body'][:200])}")
     if shot:
         await cdp.screenshot(client, shot)
         print(f"{'-' * 72}\n  screenshot -> {shot} ({os.path.getsize(shot)} bytes)")
@@ -273,7 +324,24 @@ async def main():
     ap.add_argument("--network", action="store_true", help="also record API calls")
     ap.add_argument("--shot", help="write a screenshot to this path each report")
     ap.add_argument("--no-tree", action="store_true", help="omit the page tree")
+    ap.add_argument("--redact", action="append", metavar="VALUE",
+                    help="mask this exact string everywhere it is printed (repeatable). Also "
+                         f"read from $OBSERVE_REDACT and {_REDACT_FILE}")
+    ap.add_argument("--redact-hex32", action="store_true",
+                    help="also mask every 32-hex token. Blunt: a CrowdStrike AID looks exactly "
+                         "like a policy id, so this loses policy ids too")
     a = ap.parse_args()
+
+    global _redact_values, _redact_hex32
+    _redact_values = _load_redactions(a.redact)
+    _redact_hex32 = a.redact_hex32
+    if _redact_values or _redact_hex32:
+        bits = []
+        if _redact_values:
+            bits.append(f"{len(_redact_values)} exact value(s)")
+        if _redact_hex32:
+            bits.append("all 32-hex tokens")
+        print(f"redacting: {', '.join(bits)}", file=sys.stderr)
 
     tabs = list_tabs()
     if a.list or not (a.once or a.watch):
