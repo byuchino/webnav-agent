@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Watch a browser session a human is driving. Read-only.
+r"""Watch a browser session a human is driving. Read-only.
 
 Not in the guide — the guide's agent drives a browser nobody else is using. This is the
 opposite: attach to a tab a person is actively working in, and report what is there so
