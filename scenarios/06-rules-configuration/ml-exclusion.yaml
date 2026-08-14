@@ -80,18 +80,29 @@ instructions: |
      which is the single most consequential click in this exercise. Then **Next**.
 
      **Screen 2 — the pattern and what to exclude.** Set the **Exclusion pattern** to something
-     containing **FalconLabMLX**, e.g. `C:\FalconLabMLX\*`. The grader substring-matches that
-     distinctive folder name, so the exact glob syntax does not matter here — but note the form
-     also offers **Parent exclusion pattern** and **Grandparent exclusion pattern**, which scope
-     by what LAUNCHED the file rather than by the file's own path. Leave those empty.
+     containing **FalconLabMLX**, e.g. `C:\FalconLabMLX\*`. It takes glob syntax, one pattern
+     per exclusion, and there is a **Glob guidelines** link if you want the rules. The grader
+     substring-matches that distinctive folder name, so the exact syntax does not matter here.
 
-     What you are excluding from is **not** a list of separate checkboxes. The console tracks two
-     independent things, visible as the table's columns:
-       - **Detections and preventions** — one combined setting, not two
-       - **Uploads to CrowdStrike** — separate, and it controls whether matching files are sent
-         to the cloud for analysis at all
+     Use the **Test Value** box and **Test Pattern** button before saving — type a path you
+     expect to match and confirm the pattern actually catches it. A glob that silently matches
+     nothing is the quietest way for an exclusion to do nothing at all.
 
-     Save.
+     **Tick "Detections and preventions" under "Excluded from". Neither box is ticked by
+     default.** There are two, and they are independent:
+       - **Detections and preventions** — one combined setting, not two separate ones
+       - **Uploads to CrowdStrike** — governs whether matching files are sent to the cloud for
+         analysis at all. Leave it off here; it is a different concern from silencing ML
+
+     Saving with neither ticked produces an exclusion that excludes from nothing.
+
+     **Include ancestor exclusion patterns** is a switch, off by default. It reveals parent and
+     grandparent pattern fields, which scope by what LAUNCHED the file rather than by the file's
+     own path. Leave it off for this exercise, but know it is there — that is how you exclude
+     "this file, but only when that process ran it".
+
+     Optionally add a **Comment for audit log** (the form recommends it, and on a real change you
+     want the reason recorded). Then press **Create exclusion** — the button is not called Save.
 
   3. UNDERSTAND WHAT YOU JUST DID. Files under that path are now invisible to Falcon's ML on the
      Falcon Lab hosts. IOAs and IOCs would still act on them — that is the whole point of ML
@@ -130,8 +141,9 @@ verify:
       - "I know an ML exclusion suppresses only ML — IOAs and IOCs still act on that path"
       - "I scoped the exclusion to the Falcon Lab group — noticing that All hosts is the
          wizard's DEFAULT, so accepting it silently makes a CID-wide blind spot"
-      - "I know Detections and preventions is one combined setting, and Uploads to
-         CrowdStrike is a separate one"
+      - "I know Detections and preventions is one combined setting, that Uploads to
+         CrowdStrike is a separate one, and that NEITHER is ticked by default"
+      - "I tested the glob with Test Pattern rather than assuming it matched"
       - "I can explain why an exclusion is a deliberate blind spot and a last resort"
 
 hint: >
