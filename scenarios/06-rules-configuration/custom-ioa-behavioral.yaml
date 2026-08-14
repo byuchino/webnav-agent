@@ -24,8 +24,10 @@ teaches: |
     is enabled, the group is assigned to a policy, the policy is applied, and something actually
     performs the behaviour
   - Rule actions — Monitor (log only) vs Detect vs Prevent — and severity
-  - That the same policy-propagation delay applies: after assigning, the rule must reach the host
-    before a trigger will detect (the pending/applied clock again)
+  - That a propagation delay still applies — the rule must reach the host before a trigger will
+    detect — but that it is INVISIBLE here: attaching a rule group does not change the policy's
+    settings_hash and does not take the host off the policy, so the pending/applied dance you
+    see when editing a setting never happens. Not every change announces itself the same way
 
 setup:
   - name: confirm the sensor is healthy
@@ -53,9 +55,17 @@ instructions: |
      the gate people miss.
 
   3. ASSIGN IT. Endpoint security > Configure > Prevention policies > Windows > your **Falcon
-     Lab** policy > **Assigned custom IOAs** tab > Assign rule group > **Falcon Lab IOA**. Then
-     wait for the policy to APPLY to the host — same pending/applied delay as every other policy
-     change; a rule that has not reached the host will not fire.
+     Lab** policy > **Assigned custom IOAs** tab > Assign rule group > **Falcon Lab IOA**. Give
+     it a couple of minutes to reach the host; a rule that has not arrived will not fire.
+
+     **Do not wait for Applied hosts to drop to 0 and come back — it will not.** Attaching a
+     rule group is not a settings edit. The policy's `settings_hash` does not change, and the
+     host never leaves the policy, so there is nothing for the console to count as un-applied.
+     Editing a *setting* (a slider, a toggle) does show that pending dance; attaching a rule
+     group does not, and watching for it will have you waiting on a number that never moves.
+
+     What does move is the policy's **applied date** on the host — and, more usefully, the rule
+     simply starts firing. If step 4 produces a detection, it arrived.
 
   4. TRIGGER IT. Perform the behaviour on the host. The console-native, real-world way is RTR
      (needs RTR Administrator and `run` enabled on the response policy — see rtr-run-binaries):
@@ -106,7 +116,8 @@ verify:
 hint: >
   If the functional check reads absent, walk the gates in order — any one stops it: is the RULE
   enabled (not just the group); is the GROUP enabled; is the group assigned to the Falcon Lab
-  prevention policy; has that policy APPLIED to the host (pending/applied); did the command line
+  prevention policy; has it had a couple of minutes to reach the host (do NOT look for Applied
+  hosts to dip to 0 — attaching a rule group never produces that); did the command line
   actually run and match the regex; and has the detection had a minute to surface (re-grade after
   a short wait). If the rule-group check passes but functional does not, configuration is fine
   and you are on the trigger/latency side. Note the grader matches recent alerts on the token, so
