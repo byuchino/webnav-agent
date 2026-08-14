@@ -73,20 +73,31 @@ instructions: |
   That is the prevention. **Now look at the file** — `Test-Path C:\lab\labtest.exe` reads False.
   It has not been deleted; it has been moved.
 
-  ## 3. Find where it went, on the host
-
-      Get-ChildItem C:\Windows\System32\drivers\CrowdStrike\Quarantine
-
-  Two files, named for the SHA256: the encoded original and a `.csq` metadata sidecar. This is
-  the quarantine store the docs describe — encoded so it cannot execute, retained so it can be
-  restored.
-
-  ## 4. Review it in the console
+  ## 3. Review it in the console — this is the job
 
   Endpoint security > Monitor > **Quarantined files**. Find `labtest.exe` on **FALCON-LAB-WIN**
   and open it. Note the **hash**, the **originating path**, the **host**, and the **state** —
-  this is the record you would triage during an incident. Expect it to reach the console a minute
-  or two after the host quarantines it; the host is always first.
+  this is the record you triage during an incident, and everything you need is here.
+
+  Expect it a minute or two after the host quarantines it: the host acts first and the console
+  catches up. If the file is gone from disk but the console is empty, the answer is *wait*.
+
+  ## 4. Optional — see the mechanism, the way you'd actually reach a host
+
+  Step 3 is the standard operating procedure and it is sufficient. This step exists only to make
+  one claim concrete: a quarantined file is **not deleted**. If you want to see that for
+  yourself, reach the host the sanctioned way — **RTR**, not a remote desktop or an SSH session.
+
+  Host management > find `falcon-lab-win` > **Connect to host**, then:
+
+      ls C:\Windows\System32\drivers\CrowdStrike\Quarantine
+
+  Two entries named for the SHA256: the encoded original and a `.csq` metadata sidecar. Encoded
+  so it cannot execute, retained so it can be restored. (`ls` is in the base RTR command set, so
+  Active Responder is enough — you do not need RTR Administrator for this.)
+
+  Note what you are *not* doing: opening, copying or deleting anything in that directory. It is
+  the sensor's store, and the console actions in step 5 are how you act on its contents.
 
   ## 5. Learn the actions (read; try Release if you like)
 
@@ -122,14 +133,25 @@ verify:
 
   # The functional check. Reads the cloud quarantine store, so it also proves the record made it
   # off the host. It lags the host by a minute or two -- re-grade rather than concluding.
+  #
+  # within_min is NOT optional here. A quarantine record outlives both the file and the IOC that
+  # caused it: staging removes the previous blocklist entry, the host store empties, and the
+  # cloud record stays behind reading `state: quarantined`. Unbounded, this check passes on the
+  # last run's artifact while the learner has done nothing.
   - kind: api
-    label: "(functional) a quarantined file exists on FALCON-LAB-WIN"
+    label: "(functional) a file was quarantined on FALCON-LAB-WIN in this run"
     assert: quarantined_file
     hostname: "FALCON-LAB-WIN"
     name_contains: "labtest"
+    within_min: 120
 
   # The host-side truth, which is immediate and independent of cloud propagation. If this passes
   # while the check above fails, the answer is "wait", not "something is broken".
+  #
+  # This is the GRADER reaching the host over ssh, which is lab automation -- it is deliberately
+  # NOT what the exercise asks the learner to do. An analyst reviews quarantine in the console
+  # and reaches a host through RTR; step 4 says so. Do not let a grader's convenience become a
+  # taught habit.
   - kind: endpoint
     label: the encoded file is in the on-host quarantine store
     shell: |
@@ -142,9 +164,10 @@ verify:
     label: understanding
     items:
       - "I saw the binary run once, then be denied after the IOC reached the sensor"
-      - "I found the encoded file and its .csq sidecar in the on-host quarantine store"
-      - "I can explain why quarantine is an EXECUTION-time action, not a write-time one"
       - "I found the record in Quarantined files and can read its hash, path, host, and state"
+      - "I can explain why quarantine is an EXECUTION-time action, not a write-time one"
+      - "I know a quarantined file is moved and encoded, not deleted — and that the console is
+         where you act on it, not the host's filesystem"
       - "I can explain Release vs Undo Release vs Delete"
       - "I know released files from removable media go to C:\\ProgramData\\CrowdStrike"
       - "I know an offline host's release applies when it returns within 30 days"

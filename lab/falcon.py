@@ -697,13 +697,18 @@ def ml_exclusion_exists(path_contains, group_name=None):
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
 
 
-def quarantined_file(hostname, name_contains=None):
+def quarantined_file(hostname, name_contains=None, within_min=None):
     """Is there a quarantined file on `hostname` (optionally whose record contains
-    `name_contains`, e.g. 'eicar')? (Quarantine read scope.)
+    `name_contains`)? (Quarantine read scope.)
 
-    A real functional check: EICAR is genuinely quarantined when the prevention policy's
-    Quarantine setting is on, so this proves the file reached the quarantine store.
+    `within_min` bounds it to records created recently, and scenarios that stage their own
+    trigger should always set it. **A quarantine record OUTLIVES the file and the IOC that
+    caused it**: after the blocklist entry is removed the host store empties, but the cloud
+    record persists with `state: quarantined`. Without a time bound this check passes on a
+    previous run's artifact while the learner has done nothing -- the same false pass as
+    grading "the file is gone from disk", which measured Windows Defender.
     """
+    import datetime as _dt
     import json as _json
     clients = _clients()
     if not clients:
@@ -718,14 +723,31 @@ def quarantined_file(hostname, name_contains=None):
         if not ids:
             return {"ok": False, "reason": f"no quarantined files on {hostname} "
                     f"(is the prevention policy's Quarantine setting on and applied?)"}
-        if not name_contains:
-            return {"ok": True, "reason": f"{len(ids)} quarantined file(s) on {hostname}"}
         d = clients["quarantine"].get_quarantine_files(ids=ids)
-        for f in (d.get("body") or {}).get("resources") or []:
+        rows = (d.get("body") or {}).get("resources") or []
+        window = ""
+        if within_min:
+            cutoff = (_dt.datetime.now(_dt.timezone.utc)
+                      - _dt.timedelta(minutes=within_min)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            fresh = [f for f in rows if (f.get("date_created") or "") >= cutoff]
+            window = f" in the last {within_min} min"
+            if rows and not fresh:
+                newest = max((f.get("date_created") or "") for f in rows)
+                return {"ok": False, "reason": f"{len(rows)} quarantined file(s) on {hostname} "
+                        f"but none{window} (newest {newest}) -- that is a PREVIOUS run's record; "
+                        f"a quarantine record outlives the file and the IOC that caused it"}
+            rows = fresh
+        if not name_contains:
+            return {"ok": bool(rows),
+                    "reason": (f"{len(rows)} quarantined file(s) on {hostname}{window}" if rows
+                               else f"no quarantined files on {hostname}{window}")}
+        for f in rows:
             if name_contains.lower() in _json.dumps(f).lower():
                 return {"ok": True, "reason": f"a quarantined file matching {name_contains!r} on "
-                        f"{hostname} (state: {f.get('state') or 'quarantined'})"}
-        return {"ok": False, "reason": f"{len(ids)} quarantined file(s) on {hostname}, but none "
-                f"match {name_contains!r} -- has EICAR been dropped and quarantined yet?"}
+                        f"{hostname}{window} (state: {f.get('state') or 'quarantined'}, "
+                        f"created {f.get('date_created')})"}
+        return {"ok": False, "reason": f"{len(rows)} quarantined file(s) on {hostname}{window}, "
+                f"but none match {name_contains!r} -- has the binary been RUN yet? Writing it to "
+                f"disk does not quarantine it; only attempting to execute it does"}
     except Exception as e:  # noqa: BLE001
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
