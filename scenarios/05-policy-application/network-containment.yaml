@@ -50,8 +50,10 @@ instructions: |
 
   ## 1. Understand what you are about to do
 
-  Endpoint security > Configure > **Containment policy** (`/configuration-v2/containment`). This
-  is where the allowlist lives — the addresses a contained host may still reach.
+  **Host setup and management > Containment policy** (`/configuration-v2/containment`) — note it
+  lives with host setup, NOT under Endpoint security where the prevention and response policies
+  are. The page is headed **Containment allowlists**, and it is where you define what a contained
+  host may still reach.
 
   Containment blocks everything except the sensor's connection to CrowdStrike, and kills existing
   connections. For this lab that means **SSH from the controller dies**, the panel's terminal
@@ -59,8 +61,15 @@ instructions: |
 
   ## 2. Allowlist the lab subnet BEFORE containing
 
-  Add **`10.77.0.0/24`** to the containment allowlist. That is the lab network: the controller
-  (10.77.0.3) reaches both guests over it, and it is the door you need to keep open.
+  Press **Create allowlist**. An allowlist is a named object, not a bare list of addresses —
+  the table shows **Type**, **Name** and **Rule** — so you are creating a rule you will recognise
+  again in six months, and the name is part of the exercise.
+
+  Make its rule cover **`10.77.0.0/24`**. That is the lab network: the controller (10.77.0.3)
+  reaches both guests over it, and it is the door you need to keep open.
+
+  If the page reads **"No allowlist rules yet"**, nothing has ever been allowed here — which
+  means containing a host right now would cut every route to it except RTR.
 
   Note the FQDN option while you are here, and why IP/CIDR is the stronger choice: FQDN
   allowlisting needs clear-text DNS to work at all, trusts DNS resolution to be honest, and on

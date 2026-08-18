@@ -266,6 +266,7 @@ Real paths for this tenant:
 | Host retention policies | `/host-management/policies/host-retention/all` |
 | Endpoint detections | `/activity-v2/detections` |
 | Response policies | `/policies/response/<platform>` |
+| Containment policy | `/configuration-v2/containment` — **Host setup and management**, not Endpoint security |
 
 If a check reports "no API response matching", read the sitemap for your own tenant before
 adjusting anything else — routes differ by subscription.
