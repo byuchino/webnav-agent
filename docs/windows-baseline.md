@@ -76,6 +76,23 @@ resync the clock. One ssh round trip, idempotent, and it cannot lose a race it d
 **So: never snapshot a guest that has been running a while without re-asserting the pin first.**
 That is the path back to the bad baseline.
 
+**A timer now does this, because `prepare()` was not enough.** Checked after four days of
+uptime (2026-08-18): `wuauserv` 4 -> 3, `UsoSvc` 4 -> **2 (Automatic)**, `WaaSMedicSvc` 4 -> 3,
+and **five updates staged**. UBR had not moved only because nothing had rebooted — and staged
+updates apply AT SHUTDOWN, so the guest was one reboot from RFM. `windows_post_revert()` runs
+from `scenarios.prepare()`, which covers exercise starts and says nothing about uptime.
+
+On the controller: **`falcon-lab-pin.timer`** → `falcon-lab-pin.service` →
+`tools/pin_guard.py`, every 6 h, `Persistent=true` so a missed window fires on boot.
+
+```
+ssh proxmox-1 "pct exec 903 -- systemctl list-timers falcon-lab-pin.timer"
+ssh proxmox-1 "pct exec 903 -- journalctl -u falcon-lab-pin.service -n 20"
+```
+
+It skips an unreachable guest and exits 0: a powered-off lab guest is normal, and a timer that
+reports failure for it is a timer you learn to ignore.
+
 **The cost, stated plainly:** this guest no longer receives security updates. That is acceptable
 for a snapshot-reverted lab VM that exists to be attacked with EICAR, and unacceptable as a
 pattern to copy anywhere else. It also **freezes one half of a genuinely instructive situation** —
