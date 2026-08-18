@@ -308,6 +308,14 @@ def _check_api(s, v):
                                               "or 'hostname'"}
             hn = config.HOSTS[t]["name"]
         return falcon.rfm_state(hn, v.get("expect", "no"))
+    if assertion == "host_contained":
+        hn = v.get("hostname")
+        if not hn:
+            t = v.get("target")
+            if t not in config.HOSTS:
+                return {"ok": None, "reason": "api host_contained needs 'target' or 'hostname'"}
+            hn = config.HOSTS[t]["name"]
+        return falcon.host_contained(hn, v.get("expect", True))
     if assertion == "quarantined_file":
         hn = v.get("hostname")
         if not hn:

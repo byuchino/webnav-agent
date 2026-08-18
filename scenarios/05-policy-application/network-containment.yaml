@@ -1,0 +1,150 @@
+id: network-containment
+name: Network containment — isolate a host without losing it
+target: lnx
+baseline: sensor
+mode: guided
+domain: 5
+difficulty: 3
+duration_min: 30
+objective: "5.4, 5.5 — understand containment, and configure the IP/subnet exclusions that apply to contained hosts"
+requires: [lab-host-group]
+
+summary: >
+  Containment cuts a host off from everything except CrowdStrike. That is the point during an
+  incident, and it is also how responders lock themselves out of the machine they were about to
+  investigate. You configure the containment allowlist FIRST, contain a real host, and prove
+  both halves: the host is genuinely contained, and your allowlist kept the door you need.
+
+teaches: |
+  - What containment actually does, in CrowdStrike's words: on receiving the request the sensor
+    "blocks all incoming and outgoing network connections to and from the host other than the
+    sensor's connection to the cloud", and terminates existing connections — except those
+    allowed by network traffic allowlisting
+  - That the allowlist is therefore not a nicety. The docs say to work out what you need in a
+    TEST environment before containing anything in production; this exercise is that test
+  - The four states and where they show: `normal`, `contained`, and the two transitional ones
+    the console calls **Containment Pending** and **Lift Containment Pending**
+  - That containment is CLOUD-side state keyed to the host, not a change on disk — so you
+    **cannot revert your way out of it**. Lifting is a console action, and it is the only exit
+  - That RTR still reaches a contained host: RTR rides the sensor's cloud channel, which is
+    exactly the connection containment preserves. That is what makes containment safe to use
+  - That containment is one host at a time, and role-gated
+  - **Network** containment vs **File System** containment: different features with confusingly
+    similar names. The latter is a prevention-policy setting (`Execution Blocking > File System
+    Containment`, on in the Phase 2/3 templates) and reports separately as
+    `filesystem_containment_status`
+  - Why FQDN allowlisting is weaker than IP/CIDR: it depends on clear-text DNS visibility (so it
+    breaks under DoH/DoT/DoQ), on DNS integrity, and on TLS SNI being visible — and allowlisting
+    a domain where anyone can register subdomains can resolve to attacker-controlled hosts
+
+setup:
+  - name: confirm the sensor is healthy and the host is NOT already contained
+    shell: |
+      systemctl is-active falcon-sensor >/dev/null 2>&1 && echo "sensor active" || echo "SENSOR NOT ACTIVE"
+    expect_contains: sensor active
+
+instructions: |
+  The target is the **Linux** guest, deliberately: if this goes wrong you lose network access to
+  `falcon-lab-lnx` and not to the Windows host every other exercise depends on. Read step 4
+  before you contain anything.
+
+  ## 1. Understand what you are about to do
+
+  Endpoint security > Configure > **Containment policy** (`/configuration-v2/containment`). This
+  is where the allowlist lives — the addresses a contained host may still reach.
+
+  Containment blocks everything except the sensor's connection to CrowdStrike, and kills existing
+  connections. For this lab that means **SSH from the controller dies**, the panel's terminal
+  button stops working, and the grader's endpoint checks fail — unless you allow the lab subnet.
+
+  ## 2. Allowlist the lab subnet BEFORE containing
+
+  Add **`10.77.0.0/24`** to the containment allowlist. That is the lab network: the controller
+  (10.77.0.3) reaches both guests over it, and it is the door you need to keep open.
+
+  Note the FQDN option while you are here, and why IP/CIDR is the stronger choice: FQDN
+  allowlisting needs clear-text DNS to work at all, trusts DNS resolution to be honest, and on
+  shared IPs cannot tell one domain from another. Allowlisting a domain that lets anyone register
+  subdomains can end up resolving to somebody else's infrastructure.
+
+  ## 3. Contain the host
+
+  Host setup and management > Host management > `falcon-lab-lnx` > open its **summary panel** >
+  **Actions** > **Network Contain**.
+
+  The status goes to **Containment Pending** first, then **contained**. Only one host can be
+  contained or released at a time.
+
+  ## 4. Before you press it — how you get back
+
+  **A revert will NOT lift containment.** It is cloud-side state attached to the host's agent ID,
+  and reverting restores the same sensor with the same AID, which will re-apply it on boot. The
+  only exit is **Actions > Lift Containment** in the console.
+
+  Your safety net is that **RTR still works on a contained host** — the sensor's cloud channel is
+  precisely what containment keeps open. So even a completely botched allowlist leaves you a way
+  onto the box. That is not a lab quirk; it is why containment is usable during a real incident.
+
+  ## 5. Prove BOTH halves
+
+  This is the part that matters, and it is why the exercise exists:
+
+    - **It is really contained** — the console shows `contained`, and the grader confirms it
+      from the device record rather than from the button you pressed
+    - **Your allowlist worked** — the guest still answers over SSH from the controller. The
+      grader runs a command on it. If that check passes while the host is contained, the
+      allowlist is doing exactly what it claims
+
+  If the endpoint check fails while containment succeeded, you have just demonstrated the failure
+  the docs warn about: a correctly contained host you can no longer reach. Fix the allowlist,
+  lift, and try again — do not conclude the lab is broken.
+
+  ## 6. Lift it
+
+  **Actions > Lift Containment.** Status goes to **Lift Containment Pending**, then `normal`.
+  Leaving it contained will make later exercises fail in confusing ways.
+
+  ## 7. Check your work
+
+  Press **grade**, or `lab grade network-containment`.
+
+expect:
+  console: |
+    falcon-lab-lnx showing status Contained in Host management, and 10.77.0.0/24 present in the
+    containment policy allowlist.
+  detection: none — containment is a response action, not a detection
+
+verify:
+  - kind: api
+    label: "(functional) the host is actually network contained"
+    assert: host_contained
+    target: lnx
+    expect: true
+
+  # The whole point. A contained host that still answers here proves the allowlist works --
+  # this check FAILING while the one above passes is the exercise's central lesson, not a bug.
+  - kind: endpoint
+    label: "(functional) the allowlist kept the lab subnet reachable while contained"
+    target: lnx
+    shell: |
+      echo "reachable while contained"
+    expect_contains: "reachable while contained"
+
+  - kind: attest
+    label: understanding
+    items:
+      - "I added 10.77.0.0/24 to the containment allowlist BEFORE containing anything"
+      - "I saw the host reach Containment Pending and then contained"
+      - "I can explain why a revert does not lift containment, and what does"
+      - "I know RTR still reaches a contained host, and why that is by design"
+      - "I can distinguish network containment from File System Containment"
+      - "I can say why FQDN allowlisting is weaker than IP/CIDR"
+      - "I lifted containment afterwards and confirmed the host returned to normal"
+
+hint: >
+  If the containment check says `pending`, that is neither pass nor fail — re-grade in a moment.
+  If containment succeeded but the endpoint check failed, the allowlist is wrong or has not
+  reached the sensor: the host is contained and unreachable, which is the real-world failure this
+  exercise is designed to let you make safely. Reach it over RTR (which containment keeps open),
+  or lift containment from the console — reverting the guest will NOT help, because containment
+  is cloud-side state keyed to the agent ID, not anything on disk.

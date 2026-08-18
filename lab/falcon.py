@@ -697,6 +697,42 @@ def ml_exclusion_exists(path_contains, group_name=None):
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
 
 
+def host_contained(hostname, expect=True):
+    """Is `hostname` under NETWORK containment? (Hosts read scope.)
+
+    Reads the device `status` field, whose values are `normal` / `contained`, plus the two
+    transitional ones the console shows as "Containment Pending" and "Lift Containment Pending".
+    A pending state is reported as `None` -- in flight is neither pass nor fail, and calling it
+    either would make the check a coin toss during the window it is most likely to be run.
+
+    NOT the same thing as `filesystem_containment_status`, which is the prevention policy's
+    File System Containment setting. Different feature, different field, similar name.
+    """
+    clients = _clients()
+    if not clients:
+        return {"ok": None, "reason": _why_unavailable()}
+    try:
+        q = clients["hosts"].query_devices_by_filter(filter=f"hostname:'{hostname}'", limit=20)
+        ids = (q.get("body") or {}).get("resources") or []
+        if not ids:
+            return {"ok": False, "reason": f"no visible host named {hostname!r}"}
+        d = clients["hosts"].get_device_details(ids=ids)
+        for dev in (d.get("body") or {}).get("resources") or []:
+            st = (dev.get("status") or "").lower()
+            if "pending" in st:
+                return {"ok": None, "reason": f"{hostname} is {st!r} -- containment is in "
+                        f"flight; re-grade in a moment"}
+            contained = st == "contained"
+            if contained == bool(expect):
+                return {"ok": True, "reason": f"{hostname} status={st!r} (expected "
+                        f"{'contained' if expect else 'not contained'})"}
+            return {"ok": False, "reason": f"{hostname} status={st!r}, expected "
+                    f"{'contained' if expect else 'normal'}"}
+        return {"ok": None, "reason": f"no device detail returned for {hostname!r}"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
 def quarantined_file(hostname, name_contains=None, within_min=None):
     """Is there a quarantined file on `hostname` (optionally whose record contains
     `name_contains`)? (Quarantine read scope.)
