@@ -247,11 +247,16 @@ def windows_post_revert(name, progress=None):
         return None
     # The guests run with TZ=UTC, so a UTC string is also their local time.
     now = _dt.datetime.now(_dt.timezone.utc).strftime("%m/%d/%Y %H:%M:%S")
+    # All THREE services, not just wuauserv. Measured 2026-08-18 after four days of uptime:
+    # wuauserv had gone 4 -> 3, UsoSvc 4 -> 2 (Automatic), WaaSMedicSvc 4 -> 3, and five updates
+    # were staged. Resetting wuauserv alone is pointless -- the other two are what turn it back
+    # on, so all three have to go back to 4 every time.
+    svcs = ("wuauserv", "UsoSvc", "WaaSMedicSvc")
     ps = "; ".join([
         f'Set-Date -Date "{now}" | Out-Null',
-        'Stop-Service wuauserv -Force -ErrorAction SilentlyContinue',
-        r'Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\wuauserv" '
-        '-Name Start -Value 4 -ErrorAction SilentlyContinue',
+    ] + [f'Stop-Service {n} -Force -ErrorAction SilentlyContinue' for n in svcs]
+      + [rf'Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\{n}" '
+         '-Name Start -Value 4 -ErrorAction SilentlyContinue' for n in svcs] + [
         r'Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force '
         '-ErrorAction SilentlyContinue',
         r'Write-Output ("UBR=" + (Get-ItemProperty '
