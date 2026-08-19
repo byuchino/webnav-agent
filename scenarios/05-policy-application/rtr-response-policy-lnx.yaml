@@ -119,6 +119,7 @@ verify:
     policy: response
     group: "Falcon Lab"
   - kind: endpoint
+    required: true
     label: "(functional) an RTR command actually ran — /tmp/rtr-lab-proof exists on the host"
     shell: "[ -d /tmp/rtr-lab-proof ] && echo present || echo absent"
     expect_contains: present

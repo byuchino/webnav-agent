@@ -106,6 +106,7 @@ verify:
     assert: ioa_group_enabled
     group: "Falcon Lab IOA"
   - kind: api
+    required: true
     label: "(functional) a detection fired matching the IOA behaviour"
     assert: detection_contains
     contains: "FALCONLAB-IOA-TEST"

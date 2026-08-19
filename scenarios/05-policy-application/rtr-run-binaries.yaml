@@ -135,6 +135,7 @@ verify:
     policy: response
     group: "Falcon Lab"
   - kind: endpoint
+    required: true
     label: "(functional) run executed a binary — C:\\rtr-run-proof was created on the host"
     shell: "if (Test-Path 'C:\\rtr-run-proof') { 'present' } else { 'absent' }"
     expect_contains: present

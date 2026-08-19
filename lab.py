@@ -139,7 +139,10 @@ def cmd_grade(a):
              _c("NOT YET", BAD) if r["passed"] is False else _c("UNVERIFIED", DIM))
     print(f"{r['scenario']:28} {label}")
     for c in r.get("checks", []):
-        mark = _mark(c["ok"])
+        # A REQUIRED check that could not run must not look like a skipped one: "--" reads as
+        # "fine, nothing to see", and that is exactly how a half-verified pass slips through.
+        mark = (_c("BLOCKED", BAD) if c.get("required") and c["ok"] is None
+                else _mark(c["ok"]))
         print(f"  {mark:14} {c['label']:34} {c.get('reason','')[:60]}")
         for item in c.get("items", []):
             print(f"        {_c('[ ] ' + item, DIM)}")

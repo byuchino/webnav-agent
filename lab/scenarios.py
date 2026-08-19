@@ -333,6 +333,13 @@ def grade(sid):
     """Run every declared check. Passes only if at least one check ran and none failed.
 
     A scenario whose checks all returned None is NOT a pass -- it is unverified, and says so.
+
+    **`required: true` on a check makes `None` block the pass too.** Without it, a check that
+    could not run is merely skipped, which is right for an incidental check and wrong for the
+    one carrying the exercise's claim. `network-containment` found this the hard way: graded
+    from a host the contained guest could no longer reach, its "the allowlist kept the subnet
+    reachable" check returned None -- and the scenario reported PASS on the containment half
+    alone, certifying exactly half of a two-part claim. Mark the checks that ARE the exercise.
     """
     s = get(sid)
     checks = s.get("verify") or []
@@ -351,14 +358,30 @@ def grade(sid):
         r["label"] = v.get("label", v["kind"])
         results.append(r)
 
+    for r, v in zip(results, checks):
+        r["required"] = bool(v.get("required"))
+
     ran = [r for r in results if r["ok"] is not None]
     failed = [r for r in ran if r["ok"] is False]
-    passed = None if not ran else (not failed)
+    # A required check that could not run is not a pass. It is reported separately from a
+    # failure because they are different answers: "I could not look" versus "I looked and it
+    # was wrong", a distinction this grader is built around.
+    unmet = [r for r in results if r["required"] and r["ok"] is None]
+
+    if failed:
+        passed = False
+    elif unmet or not ran:
+        passed = None
+    else:
+        passed = True
 
     if passed is True:
         verdict = "; ".join(f"{r['label']}: ok" for r in ran)
     elif passed is False:
         verdict = "; ".join(f"{r['label']}: {r['reason']}" for r in failed)
+    elif unmet:
+        verdict = "required check could not run -- " + "; ".join(
+            f"{r['label']}: {r['reason']}" for r in unmet)
     else:
         verdict = "; ".join(f"{r['label']}: {r['reason']}" for r in results) or "nothing ran"
 

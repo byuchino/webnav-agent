@@ -118,6 +118,7 @@ verify:
     policy: response
     group: "Falcon Lab"
   - kind: endpoint
+    required: true
     label: "(functional) an RTR command actually ran — C:\\rtr-lab-proof exists on the host"
     shell: "if (Test-Path 'C:\\rtr-lab-proof') { 'present' } else { 'absent' }"
     expect_contains: present

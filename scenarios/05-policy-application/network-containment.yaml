@@ -132,7 +132,13 @@ verify:
 
   # The whole point. A contained host that still answers here proves the allowlist works --
   # this check FAILING while the one above passes is the exercise's central lesson, not a bug.
+  # required: a None here must NOT pass. This check IS the exercise -- without it the scenario
+  # certifies "the host is contained" while saying nothing about whether you can still reach it,
+  # which is half a claim. Note it can only be answered from inside the allowlisted subnet: the
+  # controller (10.77.0.3) qualifies, the dev box (192.168.254.34) does not, and containment
+  # correctly blocks the latter.
   - kind: endpoint
+    required: true
     label: "(functional) the allowlist kept the lab subnet reachable while contained"
     target: lnx
     shell: |

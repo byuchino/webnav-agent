@@ -168,6 +168,7 @@ verify:
   # cloud record stays behind reading `state: quarantined`. Unbounded, this check passes on the
   # last run's artifact while the learner has done nothing.
   - kind: api
+    required: true
     label: "(functional) a file was quarantined on FALCON-LAB-WIN in this run"
     assert: quarantined_file
     hostname: "FALCON-LAB-WIN"
