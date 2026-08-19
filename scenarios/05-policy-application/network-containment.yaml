@@ -76,15 +76,7 @@ instructions: |
   shared IPs cannot tell one domain from another. Allowlisting a domain that lets anyone register
   subdomains can end up resolving to somebody else's infrastructure.
 
-  ## 3. Contain the host
-
-  Host setup and management > Host management > `falcon-lab-lnx` > open its **summary panel** >
-  **Actions** > **Network Contain**.
-
-  The status goes to **Containment Pending** first, then **contained**. Only one host can be
-  contained or released at a time.
-
-  ## 4. Before you press it — how you get back
+  ## 3. Know how you get back — BEFORE you contain anything
 
   **A revert will NOT lift containment.** It is cloud-side state attached to the host's agent ID,
   and reverting restores the same sensor with the same AID, which will re-apply it on boot. The
@@ -94,28 +86,51 @@ instructions: |
   precisely what containment keeps open. So even a completely botched allowlist leaves you a way
   onto the box. That is not a lab quirk; it is why containment is usable during a real incident.
 
-  ## 5. Prove BOTH halves
+  ## 4. Contain the host
 
-  This is the part that matters, and it is why the exercise exists:
+  Host setup and management > Host management > `falcon-lab-lnx` > open its **summary panel** >
+  **Actions** > **Network Contain**.
 
-    - **It is really contained** — the console shows `contained`, and the grader confirms it
-      from the device record rather than from the button you pressed
-    - **Your allowlist worked** — the guest still answers over SSH from the controller. The
-      grader runs a command on it. If that check passes while the host is contained, the
-      allowlist is doing exactly what it claims
+  The status goes to **Containment Pending** first, then **contained**. Only one host can be
+  contained or released at a time.
 
-  If the endpoint check fails while containment succeeded, you have just demonstrated the failure
-  the docs warn about: a correctly contained host you can no longer reach. Fix the allowlist,
-  lift, and try again — do not conclude the lab is broken.
+  **The page does not refresh itself.** A stale "Pending" badge means the table is old, not that
+  the host is — look for a **Refresh** button, or just grade, which reads the device record
+  directly. Measured here: the transition completed about a minute after the click.
 
-  ## 6. Lift it
+  ## 5. Grade it NOW, while it is still contained
+
+      lab grade network-containment
+
+  Do this **before** lifting. The grader asserts the host IS contained, so lifting first makes
+  the exercise unpassable — and you will have proved nothing about the allowlist either.
+
+  Two checks, and passing BOTH is the point:
+
+    - **It is really contained** — read from the device record, not from the button you pressed
+    - **Your allowlist worked** — the grader runs a command on the guest. If that succeeds while
+      the host is contained, the allowlist is doing exactly what it claims
+
+  **Grade from the controller, not from a workstation.** The check can only be answered from
+  inside the subnet you allowlisted: the panel's grade button and the controller (10.77.0.3)
+  qualify; a dev box routing in from another network does not, and containment will correctly
+  block it. If that happens the check reports **BLOCKED** and the verdict is UNVERIFIED rather
+  than a pass — a check that could not run is not evidence.
+
+  If containment passes and the reachability check FAILS, you have just produced the failure the
+  docs warn about: a correctly contained host nobody can reach. That is a successful experiment.
+  Fix the allowlist, and reach the host over RTR meanwhile.
+
+  ## 6. Lift it, and confirm
 
   **Actions > Lift Containment.** Status goes to **Lift Containment Pending**, then `normal`.
-  Leaving it contained will make later exercises fail in confusing ways.
 
-  ## 7. Check your work
+  Leaving it contained will make later exercises fail in confusing ways — and the failure will
+  not look like containment, it will look like a broken guest.
 
-  Press **grade**, or `lab grade network-containment`.
+  Re-grade if you like: the containment check will now correctly FAIL, which is the exercise
+  telling you the truth about the host's current state rather than remembering that you passed
+  earlier.
 
 expect:
   console: |
@@ -154,6 +169,7 @@ verify:
       - "I know RTR still reaches a contained host, and why that is by design"
       - "I can distinguish network containment from File System Containment"
       - "I can say why FQDN allowlisting is weaker than IP/CIDR"
+      - "I graded WHILE contained — and understand why grading after lifting cannot pass"
       - "I lifted containment afterwards and confirmed the host returned to normal"
 
 hint: >
