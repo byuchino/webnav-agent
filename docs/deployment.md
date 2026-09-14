@@ -93,6 +93,24 @@ in `small-team-remote.md`. The order is: tunnel → Access application → DNS �
 unauthenticated client that you get a `302` to the Access login, on `/` **and** on
 `/api/term/win`.
 
+## Shared documents (`/shared`)
+
+The panel can also serve a folder of static pages at `/shared`, for documents the lab's users should
+be able to read (added 2026-09-14 for the InfiniteBits CrowdStrike–MDE project write-ups). It is
+off unless `LAB_DOCS_DIR` is set, and **the content never goes in this repo** — the repo is public
+and the documents are not.
+
+| | |
+|---|---|
+| Folder | `/srv/falcon-lab-docs` (root-owned, files `0644`) |
+| Setting | drop-in `/etc/systemd/system/falcon-lab.service.d/docs.conf` → `Environment=LAB_DOCS_DIR=/srv/falcon-lab-docs` |
+| Publisher | the owning project copies pages in (`~/crowdstrike-mde-integration/tools/publish_docs.sh`) |
+
+Pages are read from disk per request, so republishing one needs no restart. Adding or changing
+the setting does, and a restart kills open terminal websockets. `/shared` sits under the same Access
+application as the rest of the hostname — include it in the unauthenticated `302` check.
+(Not `/docs`: FastAPI already serves its interactive API docs there.)
+
 ## Verifying a deployment
 
 ```

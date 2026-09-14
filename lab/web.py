@@ -26,6 +26,14 @@ app = FastAPI(title="Falcon lab")
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")),
           name="static")
 
+# Optional folder of read-only pages for the lab's users (project write-ups and the like), served
+# at /shared -- not /docs, which is FastAPI's built-in API docs page. Off unless LAB_DOCS_DIR names
+# an existing directory. The content lives on the host and never in this repo, which is public; it
+# inherits the same remote-access gate as everything else.
+_DOCS_DIR = os.environ.get("LAB_DOCS_DIR")
+if _DOCS_DIR and os.path.isdir(_DOCS_DIR):
+    app.mount("/shared", StaticFiles(directory=_DOCS_DIR, html=True), name="shared")
+
 
 @app.websocket("/api/term/{host}")
 async def terminal(ws: WebSocket, host: str):
