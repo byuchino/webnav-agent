@@ -165,7 +165,7 @@ def _clients():
     try:
         from falconpy import (OAuth2, HostGroup, ResponsePolicies, PreventionPolicy,
                               SensorUpdatePolicy, Hosts, CustomIOA, Alerts, MLExclusions,
-                              Quarantine, IOC, NGSIEM)
+                              Quarantine, IOC)
     except ImportError:
         _API["c"] = None
         _API["why"] = "falconpy is not installed (pip install crowdstrike-falconpy)"
@@ -179,7 +179,6 @@ def _clients():
                      "ml_exclusions": MLExclusions(auth_object=auth),
                      "quarantine": Quarantine(auth_object=auth),
                      "ioc": IOC(auth_object=auth),
-                     "ngsiem": NGSIEM(auth_object=auth),
                      "response": ResponsePolicies(auth_object=auth),
                      "prevention": PreventionPolicy(auth_object=auth),
                      "sensor_update": SensorUpdatePolicy(auth_object=auth)}
@@ -806,7 +805,16 @@ def ngsiem_search(query, start="1h", view="search-all", timeout=60):
     clients = _clients()
     if not clients:
         return None, _why_unavailable()
-    ns = clients["ngsiem"]
+    # Its own client, outside _clients(): an import or auth problem here must not take the
+    # other API checks down with it.
+    if "ngsiem" not in _API:
+        try:
+            from falconpy import NGSIEM
+            cid, sec, cloud = config.api_creds()
+            _API["ngsiem"] = NGSIEM(client_id=cid, client_secret=sec, base_url=cloud)
+        except Exception as e:  # noqa: BLE001
+            return None, f"NGSIEM client unavailable: {str(e)[:100]}"
+    ns = _API["ngsiem"]
     r = ns.start_search(repository=view, query_string=query, start=start, is_live=False)
     if r.get("status_code") not in (200, 201):
         return None, (f"search could not start (HTTP {r.get('status_code')}) -- the key needs "

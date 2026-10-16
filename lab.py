@@ -374,7 +374,7 @@ def main():
     s.set_defaults(fn=cmd_reset)
 
     s = sub.add_parser("web", help="serve the control panel")
-    s.add_argument("--port", type=int, default=8901)
+    s.add_argument("--port", type=int, default=8902)   # CCFA's panel is 8901
     s.add_argument("--host", default="127.0.0.1",
                    help="bind address (default loopback; 0.0.0.0 exposes an unauthenticated "
                         "admin shell to the whole network)")

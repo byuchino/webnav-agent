@@ -7,9 +7,11 @@ import os
 import pathlib
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-# The CCFA scenarios by default. LAB_SCENARIOS points the same runner at another set -- the
-# CCSE labs live in ~/ccse/labs -- so one control panel serves both certifications.
-SCENARIO_DIR = pathlib.Path(os.environ.get("LAB_SCENARIOS", REPO / "scenarios")).expanduser()
+# This checkout is the CCSE lab runner (branch ccse-lab, a worktree of ~/webstuff). It is kept
+# apart from the CCFA lab on main so that CCSE work never changes the code, port or scenarios
+# a CCFA learner is using. Its scenarios are ~/ccse/labs; LAB_SCENARIOS overrides.
+SCENARIO_DIR = pathlib.Path(os.environ.get("LAB_SCENARIOS",
+                                           pathlib.Path.home() / "ccse" / "labs")).expanduser()
 
 _CCFA_DOMAINS = {
     0: "Foundations", 1: "User Management", 2: "Sensor Deployment",
@@ -95,7 +97,12 @@ HOSTS = {
     },
 }
 
-GUESTS = [k for k, v in HOSTS.items() if v["snapshots"]]
+# The guests above belong to the CCFA lab, which someone else is using for CCFA training.
+# This CCSE runner must never start, stop, revert, shell into or reset them, so it has no
+# guests at all until the CCSE lab gets VMs of its own; host() below refuses the CCFA ones.
+# The inventory stays so the scenario schema still validates `target: lnx|win`.
+CCFA_VMIDS = {900, 901, 902}
+GUESTS = []
 
 # Where you drop the sensor packages downloaded from the Falcon console. Kept OUTSIDE the
 # repo so installers are never committed, and local to wherever the CLI runs, because that
@@ -162,4 +169,7 @@ LNX_STAGE = "/opt/lab"
 def host(name):
     if name not in HOSTS:
         raise KeyError(f"unknown host {name!r}; known: {', '.join(HOSTS)}")
+    if HOSTS[name]["vmid"] in CCFA_VMIDS:
+        raise KeyError(f"{name!r} is a CCFA lab guest (VM {HOSTS[name]['vmid']}); the CCSE lab "
+                       f"does not touch it -- the CCSE lab has no guest of its own yet")
     return HOSTS[name]
