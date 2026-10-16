@@ -610,4 +610,7 @@ async def index():
     tag = config.tagline() or ("Reverting rolls a guest back to a clean baseline in seconds. "
                                 "Grading reports what is actually true &mdash; a check that "
                                 "could not run is never a pass.")
-    return HTMLResponse(PAGE.replace("__LABTITLE__", config.title()).replace("__TAGLINE__", tag))
+    # no-store: the page is rendered per request (title, tagline), and a cached copy from before
+    # a restart once showed a stale, broken panel after the server had been fixed.
+    return HTMLResponse(PAGE.replace("__LABTITLE__", config.title()).replace("__TAGLINE__", tag),
+                        headers={"Cache-Control": "no-store"})
