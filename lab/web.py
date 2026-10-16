@@ -269,9 +269,9 @@ async def api_revert(name: str, baseline: str):
 
 PAGE = r"""
 <title>__LABTITLE__</title>
-<link rel="stylesheet" href="/static/xterm.css">
-<script src="/static/xterm.js"></script>
-<script src="/static/xterm-addon-fit.js"></script>
+<link rel="stylesheet" href="static/xterm.css">
+<script src="static/xterm.js"></script>
+<script src="static/xterm-addon-fit.js"></script>
 <style>
   :root{--bg:#f4f5f7;--card:#fff;--ink:#15181d;--dim:#5d6672;--line:#d9dee5;
         --ok:#2c7a52;--bad:#a33528;--warn:#8a5a12;--accent:#1f4f8f;--soft:#eef1f4}
@@ -354,7 +354,7 @@ function markTerms(){
 }
 
 async function loadHosts(){
-  const r = await (await fetch('/api/status')).json();
+  const r = await (await fetch('api/status')).json();
   r.forEach(h => { window.HOSTS_UP[h.host] = !!h.reachable; });
   markTerms();
   $('#hosts').innerHTML = (r.length ? '<h2>Hosts</h2>' : '') + r.map(h => `
@@ -375,7 +375,7 @@ async function revert(host, baseline, btn){
   btn.disabled=true; const t=btn.textContent;
   const poll = setInterval(loadHosts, 8000);
   try{
-    const start = await (await fetch(`/api/revert-job/${host}/${baseline}`,{method:'POST'})).json();
+    const start = await (await fetch(`api/revert-job/${host}/${baseline}`,{method:'POST'})).json();
     const r = await follow(start.job, 'hosts-log', btn, 'reverting');
     if(r.error) alert(r.error);
   } catch(e){ alert(e.message); }
@@ -383,7 +383,7 @@ async function revert(host, baseline, btn){
 }
 
 async function loadScen(){
-  const r = await (await fetch('/api/scenarios')).json();
+  const r = await (await fetch('api/scenarios')).json();
   window.SCEN = {};
   let html = '', dom = null;
   for(const s of r){
@@ -477,7 +477,7 @@ async function follow(jid, id, btn, label){
   while(true){
     await new Promise(r=>setTimeout(r, 1200));
     let j;
-    try { j = await (await fetch(`/api/job/${jid}`)).json(); }
+    try { j = await (await fetch(`api/job/${jid}`)).json(); }
     catch(e){ return {error:`lost contact with the job: ${e.message}`}; }
     if(j.error) return {error:j.error};
     if(j.lines.length !== seen){
@@ -504,7 +504,7 @@ async function run(id, btn){
   const poll = setInterval(loadHosts, 8000);
   let r;
   try{
-    const start = await (await fetch(`/api/run/${id}${skip?'?no_revert=true':''}`, {method:'POST'})).json();
+    const start = await (await fetch(`api/run/${id}${skip?'?no_revert=true':''}`, {method:'POST'})).json();
     r = start.error ? start : await follow(start.job, id, btn, 'working');
   } catch(e){ r = {error:`could not start: ${e.message}`}; }
   finally { clearInterval(poll); btn.disabled=false; btn.textContent=t; loadHosts(); }
@@ -524,7 +524,7 @@ async function run(id, btn){
 
 async function grade(id, btn){
   btn.disabled=true;
-  const r = await call(`/api/grade/${id}`, btn, 'checking', 300);
+  const r = await call(`api/grade/${id}`, btn, 'checking', 300);
   if(r.error){ gbox(id, `<pre class="bad">${esc(r.error)}</pre>`); return; }
   const label = r.passed===true ? ['PASS','ok'] : r.passed===false ? ['NOT YET','bad']
                                                                   : ['UNVERIFIED','dim'];
@@ -550,7 +550,7 @@ async function grade(id, btn){
 
 // --- SSH terminal: opens in its OWN window so it never covers the instructions ---
 function openTerm(host){
-  const w = window.open('/terminal/'+encodeURIComponent(host), 'term_'+host,
+  const w = window.open('terminal/'+encodeURIComponent(host), 'term_'+host,
                         'width=920,height=580,menubar=no,toolbar=no,location=no,status=no');
   if(w){ w.focus(); }
   else { alert('The terminal opens in a new window — allow pop-ups for this page, then retry.'); }
@@ -563,9 +563,9 @@ setInterval(loadHosts, 30000);
 
 
 TERM_PAGE = r"""<title>terminal — __HOST__</title>
-<link rel="stylesheet" href="/static/xterm.css">
-<script src="/static/xterm.js"></script>
-<script src="/static/xterm-addon-fit.js"></script>
+<link rel="stylesheet" href="../static/xterm.css">
+<script src="../static/xterm.js"></script>
+<script src="../static/xterm-addon-fit.js"></script>
 <style>
   html,body{margin:0;height:100%;background:#0d1117;overflow:hidden}
   #bar{height:26px;display:flex;align-items:center;gap:10px;padding:0 10px;background:#161b22;
@@ -584,8 +584,7 @@ TERM_PAGE = r"""<title>terminal — __HOST__</title>
     fontFamily:'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace', theme:{background:'#0d1117'}});
   const fit = new FitAddon.FitAddon(); term.loadAddon(fit);
   term.open(document.getElementById('term')); fit.fit();
-  const proto = location.protocol==='https:'?'wss':'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/api/term/${encodeURIComponent(host)}`);
+  const ws = new WebSocket(new URL(`../api/term/${encodeURIComponent(host)}`, location.href).href.replace(/^http/, 'ws'));
   const st = document.getElementById('st');
   function resize(){ if(ws.readyState===1) ws.send(JSON.stringify({type:'resize',cols:term.cols,rows:term.rows})); }
   ws.onopen = ()=>{ st.textContent='connected'; resize(); term.focus(); };
