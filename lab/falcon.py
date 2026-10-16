@@ -165,7 +165,7 @@ def _clients():
     try:
         from falconpy import (OAuth2, HostGroup, ResponsePolicies, PreventionPolicy,
                               SensorUpdatePolicy, Hosts, CustomIOA, Alerts, MLExclusions,
-                              Quarantine, IOC)
+                              Quarantine, IOC, NGSIEM)
     except ImportError:
         _API["c"] = None
         _API["why"] = "falconpy is not installed (pip install crowdstrike-falconpy)"
@@ -179,6 +179,7 @@ def _clients():
                      "ml_exclusions": MLExclusions(auth_object=auth),
                      "quarantine": Quarantine(auth_object=auth),
                      "ioc": IOC(auth_object=auth),
+                     "ngsiem": NGSIEM(auth_object=auth),
                      "response": ResponsePolicies(auth_object=auth),
                      "prevention": PreventionPolicy(auth_object=auth),
                      "sensor_update": SensorUpdatePolicy(auth_object=auth)}
@@ -787,3 +788,72 @@ def quarantined_file(hostname, name_contains=None, within_min=None):
                 f"disk does not quarantine it; only attempting to execute it does"}
     except Exception as e:  # noqa: BLE001
         return {"ok": None, "reason": f"Falcon API read failed: {str(e)[:120]}"}
+
+
+# --- Next-Gen SIEM searches (CCSE) -----------------------------------------------------
+# A search is the only honest way to grade ingestion: the connector's own Status says it
+# exists, only an event says data arrived. Starting a query job is POST .../queryjobs, which
+# the API reference files under NGSIEM: WRITE even for a read-only query; the job is stopped
+# when done and nothing else is written. These LogScale-shaped responses come back under
+# `resources`, not `body`.
+def _ns_payload(r):
+    return r.get("resources") or r.get("body") or {}
+
+
+def ngsiem_search(query, start="1h", view="search-all", timeout=60):
+    """Run one CQL query; return (events, None) or (None, reason-it-could-not-run)."""
+    import time as _time
+    clients = _clients()
+    if not clients:
+        return None, _why_unavailable()
+    ns = clients["ngsiem"]
+    r = ns.start_search(repository=view, query_string=query, start=start, is_live=False)
+    if r.get("status_code") not in (200, 201):
+        return None, (f"search could not start (HTTP {r.get('status_code')}) -- the key needs "
+                      f"the NGSIEM: WRITE scope to start query jobs")
+    job = _ns_payload(r).get("id")
+    try:
+        deadline = _time.monotonic() + timeout
+        while True:
+            st = ns.get_search_status(repository=view, search_id=job)
+            if st.get("status_code") != 200:
+                return None, f"search status failed (HTTP {st.get('status_code')})"
+            body = _ns_payload(st)
+            if body.get("done"):
+                return body.get("events") or [], None
+            if _time.monotonic() > deadline:
+                return None, f"search not done after {timeout}s"
+            _time.sleep(1)
+    finally:
+        ns.stop_search(repository=view, id=job)
+
+
+def _field_lines(event, prefixes=("#", "@"), limit=40):
+    """The tags and metadata fields of one event, as 'name = value' lines."""
+    out = []
+    for k in sorted(event):
+        if k.startswith(prefixes) and k != "@rawstring":
+            v = str(event[k])
+            out.append(f"{k} = {v[:70]}{'...' if len(v) > 70 else ''}")
+    return out[:limit]
+
+
+def ngsiem_event(query, within_min=60, at_least=1, view="search-all", show_fields=False):
+    """Did at least `at_least` events matching `query` arrive in the last `within_min` minutes?
+
+    `show_fields` lists every tag (#) and metadata (@) field on the newest match -- the point
+    being to report what the platform actually stamped on an ingested event, rather than what
+    a doc says it stamps.
+    """
+    events, why = ngsiem_search(query, start=f"{within_min}m", view=view)
+    if events is None:
+        return {"ok": None, "reason": why}
+    n = len(events)
+    if n < at_least:
+        return {"ok": False, "reason": f"{n} matching event(s) in the last {within_min} min "
+                f"(need {at_least}) -- ingestion takes a minute; re-grade"}
+    r = {"ok": True, "reason": f"{n} matching event(s) in the last {within_min} min"}
+    if show_fields:
+        newest = max(events, key=lambda e: str(e.get("@timestamp", "")))
+        r["details"] = _field_lines(newest)
+    return r

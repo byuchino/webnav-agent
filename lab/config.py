@@ -7,7 +7,26 @@ import os
 import pathlib
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SCENARIO_DIR = REPO / "scenarios"
+# The CCFA scenarios by default. LAB_SCENARIOS points the same runner at another set -- the
+# CCSE labs live in ~/ccse/labs -- so one control panel serves both certifications.
+SCENARIO_DIR = pathlib.Path(os.environ.get("LAB_SCENARIOS", REPO / "scenarios")).expanduser()
+
+_CCFA_DOMAINS = {
+    0: "Foundations", 1: "User Management", 2: "Sensor Deployment",
+    3: "Host Management", 4: "Group Creation", 5: "Policy Application",
+    6: "Rules Configuration", 7: "Dashboards and Reports", 8: "Workflows",
+}
+
+
+def domains():
+    """Domain titles for the scenario set in use. A set may carry its own in a `lab.json`
+    beside its scenarios ({"title": ..., "domains": {"1": "..."}}); otherwise CCFA's."""
+    import json
+    try:
+        d = json.loads((SCENARIO_DIR / "lab.json").read_text())
+        return {int(k): v for k, v in d["domains"].items()}
+    except (OSError, ValueError, KeyError):
+        return _CCFA_DOMAINS
 
 # Proxmox host, reached by SSH alias from ~/.ssh/config.
 PVE = os.environ.get("LAB_PVE", "proxmox-1")
