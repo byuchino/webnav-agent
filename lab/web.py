@@ -101,6 +101,11 @@ async def terminal(ws: WebSocket, host: str):
             except Exception:  # noqa: BLE001
                 pass
 
+DOMAINS = {
+    0: "Foundations", 1: "User Management", 2: "Sensor Deployment",
+    3: "Host Management", 4: "Group Creation", 5: "Policy Application",
+    6: "Rules Configuration", 7: "Dashboards and Reports", 8: "Workflows",
+}
 
 
 async def _off(fn, *a, **kw):
@@ -224,7 +229,7 @@ async def api_scenarios():
         d = {k: v for k, v in s.items() if k not in ("steps", "setup")}
         d["kinds"] = sorted({v["kind"] for v in (s.get("verify") or [])})
         d["hosts"] = _scenario_hosts(s)
-        d["domain_name"] = config.domains().get(s.get("domain", 0), "?")
+        d["domain_name"] = DOMAINS.get(s.get("domain", 0), "?")
         d["prep"] = scenarios.prep_steps(s)
         out.append(d)
     return JSONResponse(out)
@@ -535,9 +540,6 @@ async function grade(id, btn){
     h += `<div class="chk"><span class="m ${cls}">${m}</span>
             <span>${esc(c.label)}</span>
             <span class="why">${esc(c.reason||'')}</span></div>`;
-    if((c.details||[]).length){
-      h += `<pre class="dim">` + c.details.map(esc).join('\n') + `</pre>`;
-    }
     if((c.items||[]).length){
       h += `<div class="attest">` +
            c.items.map(i=>`<div>&#9744; ${esc(i)}</div>`).join('') + `</div>`;

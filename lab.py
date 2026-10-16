@@ -69,6 +69,11 @@ def cmd_snapshot(a):
     print(f"{a.host:5} snapshot {a.name} taken ({how})")
 
 
+DOMAINS = {
+    0: "Foundations", 1: "User Management", 2: "Sensor Deployment",
+    3: "Host Management", 4: "Group Creation", 5: "Policy Application",
+    6: "Rules Configuration", 7: "Dashboards and Reports", 8: "Workflows",
+}
 
 
 def cmd_scenarios(a):
@@ -77,7 +82,7 @@ def cmd_scenarios(a):
     for s in sorted(all_.values(), key=lambda x: (x.get("domain", 0), x["id"])):
         d = s.get("domain", 0)
         if d != last:
-            print(f"\n{_c(f'{d}. ' + config.domains().get(d, '?'), WARN)}")
+            print(f"\n{_c(f'{d}. ' + DOMAINS.get(d, '?'), WARN)}")
             last = d
         mode = _c(f"{s['mode']:6}", WARN) if s["mode"] != "auto" else f"{s['mode']:6}"
         kinds = ",".join(sorted({v["kind"] for v in (s.get("verify") or [])})) or "-"
@@ -141,8 +146,6 @@ def cmd_grade(a):
         print(f"  {mark:14} {c['label']:34} {c.get('reason','')[:60]}")
         for item in c.get("items", []):
             print(f"        {_c('[ ] ' + item, DIM)}")
-        for line in c.get("details", []):
-            print(f"        {line}")
     if r["passed"] is not True and r.get("hint"):
         print()
         print(r["hint"].rstrip())

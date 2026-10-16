@@ -322,12 +322,6 @@ def _check_api(s, v):
             return {"ok": None, "reason": "api quarantined_file check needs 'hostname'"}
         return falcon.quarantined_file(hn, v.get("name_contains"),
                                        within_min=v.get("within_min"))
-    if assertion == "ngsiem_event":
-        q = v.get("query")
-        if not q:
-            return {"ok": None, "reason": "api ngsiem_event check needs 'query'"}
-        return falcon.ngsiem_event(q, v.get("within_min", 60), v.get("at_least", 1),
-                                   v.get("view", "search-all"), bool(v.get("show_fields")))
     return {"ok": None, "reason": f"unknown api assert {assertion!r}"}
 
 
