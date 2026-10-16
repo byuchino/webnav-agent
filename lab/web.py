@@ -268,7 +268,7 @@ async def api_revert(name: str, baseline: str):
 
 
 PAGE = r"""
-<title>Falcon lab</title>
+<title>__LABTITLE__</title>
 <link rel="stylesheet" href="/static/xterm.css">
 <script src="/static/xterm.js"></script>
 <script src="/static/xterm-addon-fit.js"></script>
@@ -320,7 +320,7 @@ PAGE = r"""
   details.prep li{padding:1px 0}
 </style>
 <div class="wrap">
-  <h1>Falcon lab</h1>
+  <h1>__LABTITLE__</h1>
   <div class="sub">Reverting rolls a guest back to a clean baseline in seconds. Grading reports
     what is actually true &mdash; a check that could not run is never a pass.</div>
   <div id="hosts"></div>
@@ -608,4 +608,4 @@ async def terminal_page(host: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return HTMLResponse(PAGE)
+    return HTMLResponse(PAGE.replace("__LABTITLE__", config.title()))

@@ -20,6 +20,15 @@ _CCFA_DOMAINS = {
 }
 
 
+def title():
+    """The lab's display name: `title` in the scenario set's lab.json, else 'Falcon lab'."""
+    import json
+    try:
+        return json.loads((SCENARIO_DIR / "lab.json").read_text())["title"] + " lab"
+    except (OSError, ValueError, KeyError):
+        return "Falcon lab"
+
+
 def domains():
     """Domain titles for the scenario set in use. A set may carry its own in a `lab.json`
     beside its scenarios ({"title": ..., "domains": {"1": "..."}}); otherwise CCFA's."""

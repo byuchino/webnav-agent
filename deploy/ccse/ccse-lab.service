@@ -1,0 +1,17 @@
+[Unit]
+Description=CCSE lab control panel (Next-Gen SIEM)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ccse-lab
+# Scenarios are published here from the private ~/ccse repo (tools/publish_labs.sh there).
+Environment=LAB_SCENARIOS=/opt/ccse-labs
+# Loopback only: the panel has no auth of its own. cloudflared runs in this container.
+ExecStart=/opt/ccse-lab/.venv/bin/uvicorn lab.web:app --host 127.0.0.1 --port 8902 --log-level warning
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
