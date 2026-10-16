@@ -29,6 +29,15 @@ def title():
         return "Falcon lab"
 
 
+def tagline():
+    """One line under the panel's heading: `tagline` in lab.json, else the CCFA one."""
+    import json
+    try:
+        return json.loads((SCENARIO_DIR / "lab.json").read_text())["tagline"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
 def domains():
     """Domain titles for the scenario set in use. A set may carry its own in a `lab.json`
     beside its scenarios ({"title": ..., "domains": {"1": "..."}}); otherwise CCFA's."""
@@ -112,6 +121,8 @@ HOSTS = {
 # The inventory stays so the scenario schema still validates `target: lnx|win`.
 CCFA_VMIDS = {900, 901, 902}
 GUESTS = []
+# Hosts this runner may look at or act on: none of the CCFA ones.
+MANAGED = [k for k, v in HOSTS.items() if v["vmid"] not in CCFA_VMIDS]
 
 # Where you drop the sensor packages downloaded from the Falcon console. Kept OUTSIDE the
 # repo so installers are never committed, and local to wherever the CLI runs, because that

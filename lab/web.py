@@ -183,7 +183,7 @@ def _redact(s):
 @app.get("/api/status")
 async def api_status():
     out = []
-    for name in list(config.HOSTS):
+    for name in list(config.MANAGED):
         st = await _off(core.status, name)
         h = config.HOSTS[name]
         have = set(st.get("snapshots") or [])
@@ -207,11 +207,11 @@ def _scenario_hosts(s):
     """
     out = []
     t = s.get("target")
-    if t and t != "console":
+    if t and t != "console" and t in config.MANAGED:
         out.append(t)
     for v in s.get("verify") or []:
         h = v.get("target")
-        if h and h != "console" and h in config.HOSTS and h not in out:
+        if h and h != "console" and h in config.MANAGED and h not in out:
             out.append(h)
     return out
 
@@ -321,8 +321,7 @@ PAGE = r"""
 </style>
 <div class="wrap">
   <h1>__LABTITLE__</h1>
-  <div class="sub">Reverting rolls a guest back to a clean baseline in seconds. Grading reports
-    what is actually true &mdash; a check that could not run is never a pass.</div>
+  <div class="sub">__TAGLINE__</div>
   <div id="hosts"></div>
   <div id="out-hosts-log"></div>
   <div id="scen"></div>
@@ -358,7 +357,7 @@ async function loadHosts(){
   const r = await (await fetch('/api/status')).json();
   r.forEach(h => { window.HOSTS_UP[h.host] = !!h.reachable; });
   markTerms();
-  $('#hosts').innerHTML = '<h2>Hosts</h2>' + r.map(h => `
+  $('#hosts').innerHTML = (r.length ? '<h2>Hosts</h2>' : '') + r.map(h => `
     <div class="card"><div class="row">
       <span class="name">${esc(h.host)}</span>
       <span class="mono dim">${esc(h.ip)}</span>
@@ -608,4 +607,7 @@ async def terminal_page(host: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return HTMLResponse(PAGE.replace("__LABTITLE__", config.title()))
+    tag = config.tagline() or ("Reverting rolls a guest back to a clean baseline in seconds. "
+                                "Grading reports what is actually true &mdash; a check that "
+                                "could not run is never a pass.")
+    return HTMLResponse(PAGE.replace("__LABTITLE__", config.title()).replace("__TAGLINE__", tag))
