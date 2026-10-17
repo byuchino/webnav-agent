@@ -53,17 +53,29 @@ The tunnel is the half that grants access. On 2026-08-12 DNS was routed to the C
 its Access application existed and an unauthenticated admin shell was public for ~17 minutes
 (`small-team-remote.md`). So:
 
-1. **Tunnel.** Zero Trust > Networks > Tunnels > create `ccse-lab` (cloudflared). Install
-   `cloudflared` in 904 from Cloudflare's apt repository and run the `cloudflared service install
-   <token>` command the dashboard gives. Do not add public hostnames yet.
-2. **Access applications, before any DNS.** Self-hosted applications for `ccselab.frame10.com`
-   and `labs.frame10.com`, with the same policy as `falconlab.frame10.com`
-   (`tenpin.cloudflareaccess.com`).
-3. **Public hostnames on the tunnel.** `ccselab.frame10.com` → `http://127.0.0.1:8902`;
-   `labs.frame10.com` → `http://127.0.0.1:8903`.
-4. **Verify from an unauthenticated client** that each returns a `302` to the Access login:
-   `curl -sI https://ccselab.frame10.com/`, `curl -sI https://ccselab.frame10.com/api/term/lnx`,
-   `curl -sI https://labs.frame10.com/`. A `200` on any of them means stop and fix Access first.
+Done 2026-10-17, in this order. The dashboard's menus had moved since the CCFA lab was set up:
+Tunnels is its own sidebar section (**Networking > Tunnels**), and hostnames on a tunnel are now
+**routes**.
+
+1. **Tunnel.** Networking > Tunnels > Create Tunnel, name `ccse-lab`, OS Debian, 64-bit.
+   Install the package with
+   `ssh proxmox-1 'pct exec 904 -- sh' < ~/ccse-lab-runner/deploy/ccse/install-cloudflared.sh`,
+   then inside 904 (`ssh -t proxmox-1 'pct exec 904 -- bash'`) run
+   `cloudflared service install <token>` by hand, so the token is in no file or history. Continue
+   returns to the tunnel list without asking for a route: `ccse-lab` Healthy, no routes.
+2. **Access, before any route.** Zero Trust > Access controls > **Policies**: `CCSELabLearners`
+   (Allow; Include > Emails: the owner only; session same as the application). Then
+   Access controls > **Applications** > Self-hosted, one per hostname, each with only
+   `CCSELabLearners`: `ccselab` (`ccselab.frame10.com`) and `labs` (`labs.frame10.com`), all
+   identity providers, 24 h. CCFA's `FalconLabLearners` is **not** reused: it would let CCFA
+   learners into a panel whose grader searches the tenant. Widen `CCSELabLearners` to add people.
+3. **Routes.** On the `ccse-lab` tunnel: Add route > Published application.
+   `ccselab.frame10.com` → `http://127.0.0.1:8902`; `labs.frame10.com` →
+   `http://127.0.0.1:8903`. DNS is created automatically.
+4. **Verify from an unauthenticated client** that each returns a `302` to the Access login
+   (`tenpin.cloudflareaccess.com`): `curl -sI https://ccselab.frame10.com/`,
+   `curl -sI https://ccselab.frame10.com/api/term/lnx`, `curl -sI https://labs.frame10.com/`.
+   A `200` on any of them means stop and fix Access first. All three were 302 on 2026-10-17.
 
 Nothing in these steps touches the CCFA tunnel, its Access application or LXC 903.
 
