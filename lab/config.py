@@ -51,8 +51,18 @@ def domains():
 # Proxmox host, reached by SSH alias from ~/.ssh/config.
 PVE = os.environ.get("LAB_PVE", "proxmox-1")
 
-# The key that reaches the guests. Deliberately its own key, not reused from anything else.
-LAB_KEY = os.environ.get("LAB_KEY", str(pathlib.Path.home() / ".ssh" / "falcon_lab_ed25519"))
+# The key that reaches the guests. Deliberately its own key, not reused from anything else --
+# and not the CCFA lab's falcon_lab key either: VM 905 accepts only the two ccse_lab keys (the
+# one on LXC 904 and the one on the dev box).
+LAB_KEY = os.environ.get("LAB_KEY", str(pathlib.Path.home() / ".ssh" / "ccse_lab_ed25519"))
+
+# The CCSE runner reaches Proxmox through the API with a token scoped to its own guest (role
+# CCSELabGuest on /vms/905: VM.Audit, VM.PowerMgmt, VM.Snapshot.Rollback, VM.Monitor), so the
+# container that serves the panel holds no root key. When the file is absent (the dev box) the
+# runner falls back to `ssh proxmox-1` as before. The file is {"api", "node", "token_id",
+# "secret", "ca"}, 0600; the secret is never logged or printed.
+PVE_TOKEN_FILE = pathlib.Path(os.environ.get(
+    "LAB_PVE_TOKEN", pathlib.Path.home() / ".falcon-lab" / "pve-token.json"))
 
 LAB_NET = "10.77.0.0/24"
 LAB_GW = "10.77.0.1"
@@ -92,7 +102,7 @@ HOSTS = {
         # Windows has no ICMP by default -- never test liveness with ping.
         "probe_port": 22,
     },
-    "lnx": {
+    "ccfa-lnx": {
         "vmid": 901,
         "kind": "qemu",
         "os": "linux",
@@ -116,11 +126,26 @@ HOSTS = {
 }
 
 # The guests above belong to the CCFA lab, which someone else is using for CCFA training.
-# This CCSE runner must never start, stop, revert, shell into or reset them, so it has no
-# guests at all until the CCSE lab gets VMs of its own; host() below refuses the CCFA ones.
-# The inventory stays so the scenario schema still validates `target: lnx|win`.
+# This CCSE runner must never start, stop, revert, shell into or reset them; host() below
+# refuses them. CCFA's Linux guest is listed as `ccfa-lnx` so that `lnx` -- the target the
+# CCSE scenarios name -- is the CCSE lab's own guest.
 CCFA_VMIDS = {900, 901, 902}
-GUESTS = []
+
+# The CCSE lab's guest (2026-10-17): a clone of the Ubuntu 24.04 template, on the LAN (vmbr0,
+# not CCFA's lab subnet), DHCP, NO Falcon sensor -- so it appears nowhere a CCFA learner looks
+# (hosts, host groups, policies, detections). `bare` is cloud-init done, nothing installed.
+# Its address is not fixed: `ip: None` means ask the guest agent (core.guest_ip).
+HOSTS["lnx"] = {
+    "vmid": 905,
+    "kind": "qemu",
+    "os": "linux",
+    "ip": None,
+    "user": "labadmin",
+    "name": "ccse-lab-lnx",
+    "snapshots": {"bare": "bare"},
+    "probe_port": 22,
+}
+GUESTS = ["lnx"]
 # Hosts this runner may look at or act on: none of the CCFA ones.
 MANAGED = [k for k, v in HOSTS.items() if v["vmid"] not in CCFA_VMIDS]
 
@@ -191,5 +216,5 @@ def host(name):
         raise KeyError(f"unknown host {name!r}; known: {', '.join(HOSTS)}")
     if HOSTS[name]["vmid"] in CCFA_VMIDS:
         raise KeyError(f"{name!r} is a CCFA lab guest (VM {HOSTS[name]['vmid']}); the CCSE lab "
-                       f"does not touch it -- the CCSE lab has no guest of its own yet")
+                       f"does not touch it; its own guest is `lnx` (VM 905)")
     return HOSTS[name]

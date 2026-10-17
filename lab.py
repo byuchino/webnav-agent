@@ -36,11 +36,11 @@ def _mark(v):
 
 
 def cmd_status(a):
-    for name in config.GUESTS + ["dhcp"]:
+    for name in config.GUESTS:  # never CCFA's dhcp container: host() refuses it
         st = core.status(name)
         snaps = ",".join(st["snapshots"]) or "none"
         reach = _c("up", OK) if st["reachable"] else _c("down", BAD if st["vm"] == "running" else DIM)
-        line = f"{name:5} {st['ip']:12} {st['vm']:8} {reach:12}"
+        line = f"{name:5} {st['ip']:15} {st['vm']:8} {reach:12}"
         if name in config.GUESTS:
             s = sensor.verify(name)
             line += f" sensor: {s.get('verdict', '?')}"

@@ -39,9 +39,85 @@ def _ctl(h):
     return "pct" if h["kind"] == "lxc" else "qm"
 
 
+# --- the Proxmox API, when this runner holds a scoped token -------------------------------
+# On LXC 904 the runner has no root key to the hypervisor; it has a token that may act on its
+# own guest only (config.PVE_TOKEN_FILE). Every hypervisor call below goes through _api() when
+# that file exists and through `ssh proxmox-1` otherwise, so the dev box keeps working as is.
+_API = None
+
+
+def _api():
+    global _API
+    if _API is None:
+        import json
+        try:
+            t = json.loads(config.PVE_TOKEN_FILE.read_text())
+        except (OSError, ValueError):
+            _API = False
+            return None
+        import httpx
+        _API = (httpx.Client(base_url=t["api"].rstrip("/") + "/api2/json", verify=t["ca"],
+                             timeout=30, headers={"Authorization":
+                                                  f"PVEAPIToken={t['token_id']}={t['secret']}"}),
+                t["node"])
+    return _API or None
+
+
+def _vm_path(h):
+    c, node = _api()
+    return c, f"/nodes/{node}/{'lxc' if h['kind'] == 'lxc' else 'qemu'}/{h['vmid']}"
+
+
+def _call(h, method, sub="", data=None, timeout=180):
+    """One API call on this host's VM. A POST returns a task id (UPID): wait for it, so that
+    callers see the same synchronous behavior `qm` gives them over SSH."""
+    c, base = _vm_path(h)
+    r = c.request(method, base + sub, data=data)
+    if r.status_code != 200:
+        raise LabError(f"pve api: {method} {sub or '/'} on {h['vmid']}: {r.status_code} "
+                       f"{(r.json().get('message') if r.headers.get('content-type','').startswith('application/json') else r.text)[:160]}")
+    d = r.json().get("data")
+    if method == "POST" and isinstance(d, str) and d.startswith("UPID:"):
+        node = _api()[1]
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            st = c.get(f"/nodes/{node}/tasks/{d}/status").json().get("data") or {}
+            if st.get("status") == "stopped":
+                if st.get("exitstatus") != "OK":
+                    raise LabError(f"pve api: {sub} on {h['vmid']}: {st.get('exitstatus')}")
+                return d
+            time.sleep(2)
+        raise LabError(f"pve api: {sub} on {h['vmid']}: task still running after {timeout}s")
+    return d
+
+
+def guest_ip(name):
+    """The guest's address: fixed in config, or (ip: None) asked of the QEMU guest agent."""
+    h = config.host(name)
+    if h.get("ip"):
+        return h["ip"]
+    try:
+        if _api():
+            res = (_call(h, "GET", "/agent/network-get-interfaces") or {}).get("result", [])
+        else:
+            import json
+            res = json.loads(pve(f"qm guest cmd {h['vmid']} network-get-interfaces"))
+        for n in res:
+            if n.get("name") == "lo":
+                continue
+            for a in n.get("ip-addresses", []):
+                if a.get("ip-address-type") == "ipv4":
+                    return a["ip-address"]
+    except (LabError, ValueError, KeyError):
+        pass
+    return None
+
+
 def vm_status(name):
     h = config.host(name)
     try:
+        if _api():
+            return (_call(h, "GET", "/status/current") or {}).get("status", "unknown")
         out = pve(f"{_ctl(h)} status {h['vmid']}")
         return out.split()[-1] if out else "unknown"
     except LabError:
@@ -52,7 +128,10 @@ def vm_start(name):
     h = config.host(name)
     if vm_status(name) == "running":
         return "already running"
-    pve(f"{_ctl(h)} start {h['vmid']}")
+    if _api():
+        _call(h, "POST", "/status/start")
+    else:
+        pve(f"{_ctl(h)} start {h['vmid']}")
     return "started"
 
 
@@ -60,13 +139,19 @@ def vm_stop(name):
     h = config.host(name)
     if vm_status(name) == "stopped":
         return "already stopped"
-    pve(f"{_ctl(h)} stop {h['vmid']}")
+    if _api():
+        _call(h, "POST", "/status/stop")
+    else:
+        pve(f"{_ctl(h)} stop {h['vmid']}")
     return "stopped"
 
 
 def snapshots(name):
     h = config.host(name)
     try:
+        if _api():
+            return [x["name"] for x in (_call(h, "GET", "/snapshot") or [])
+                    if x.get("name") != "current"]
         out = pve(f"{_ctl(h)} listsnapshot {h['vmid']}")
     except LabError:
         return []
@@ -84,8 +169,12 @@ def shutdown(name, timeout=180):
     h = config.host(name)
     if vm_status(name) == "stopped":
         return "already stopped"
-    pve(f"{_ctl(h)} shutdown {h['vmid']} --timeout {timeout} --forceStop 1",
-        timeout=timeout + 120)
+    if _api():
+        _call(h, "POST", "/status/shutdown", {"timeout": timeout, "forceStop": 1},
+              timeout=timeout + 120)
+    else:
+        pve(f"{_ctl(h)} shutdown {h['vmid']} --timeout {timeout} --forceStop 1",
+            timeout=timeout + 120)
     for _ in range(30):
         if vm_status(name) == "stopped":
             return "stopped"
@@ -108,6 +197,11 @@ def snapshot_create(name, snap, description="", live=False):
     revert a clean cold boot.
     """
     h = config.host(name)
+    if _api():
+        # The runner's token is deliberately unable to create snapshots: baselines are built by
+        # an administrator on the hypervisor, and a learner's panel cannot redefine "clean".
+        raise LabError(f"{name}: baselines are created on the hypervisor by an admin "
+                       f"(qm snapshot {h['vmid']} <name>), not by the runner's token")
     was_running = vm_status(name) == "running"
     if not live and h["kind"] == "qemu":
         shutdown(name)
@@ -142,7 +236,10 @@ def revert(name, baseline="bare", wait=True, progress=None):
                      f"\n                  ./lab.py snapshot {name} {snap} -d 'sensor registered'")
         raise LabError(f"{name}: no {snap!r} snapshot yet (have: {have}){extra}")
     say(f"rolling {name} back to {snap} (discards current state)")
-    pve(f"{_ctl(h)} rollback {h['vmid']} {shlex.quote(snap)}", timeout=600)
+    if _api():
+        _call(h, "POST", f"/snapshot/{snap}/rollback", timeout=600)
+    else:
+        pve(f"{_ctl(h)} rollback {h['vmid']} {shlex.quote(snap)}", timeout=600)
     say("rollback applied; waiting for the Proxmox lock to clear")
 
     # Proxmox holds a lock while the rollback finalises, so a start issued immediately after
@@ -151,8 +248,11 @@ def revert(name, baseline="bare", wait=True, progress=None):
     # lock to clear, then start, and let a genuine failure raise.
     for _ in range(30):
         try:
-            locked = pve(f"grep -c '^lock:' /etc/pve/{'lxc' if h['kind'] == 'lxc' else 'qemu-server'}"
-                         f"/{h['vmid']}.conf 2>/dev/null || echo 0")
+            if _api():
+                locked = "1" if (_call(h, "GET", "/config") or {}).get("lock") else "0"
+            else:
+                locked = pve(f"grep -c '^lock:' /etc/pve/{'lxc' if h['kind'] == 'lxc' else 'qemu-server'}"
+                             f"/{h['vmid']}.conf 2>/dev/null || echo 0")
         except LabError:
             locked = "0"
         if locked.strip() in ("0", ""):
@@ -164,7 +264,10 @@ def revert(name, baseline="bare", wait=True, progress=None):
         try:
             if vm_status(name) != "running":
                 say(f"starting {name}" + (f" (attempt {attempt + 1})" if attempt else ""))
-                pve(f"{_ctl(h)} start {h['vmid']}", timeout=180)
+                if _api():
+                    _call(h, "POST", "/status/start")
+                else:
+                    pve(f"{_ctl(h)} start {h['vmid']}", timeout=180)
             last = None
             break
         except LabError as e:
@@ -188,7 +291,10 @@ def reachable(name, timeout=4):
     if not port:
         return vm_status(name) == "running"
     try:
-        with socket.create_connection((h["ip"], port), timeout=timeout):
+        ip = guest_ip(name)
+        if not ip:
+            return False
+        with socket.create_connection((ip, port), timeout=timeout):
             return True
     except OSError:
         return False
@@ -216,7 +322,7 @@ def guest(name, command, timeout=180, check=False):
     sh there. Callers that need both provide both.
     """
     h = config.host(name)
-    cmd = SSH_BASE + ["-i", config.LAB_KEY, f"{h['user']}@{h['ip']}", command]
+    cmd = SSH_BASE + ["-i", config.LAB_KEY, f"{h['user']}@{guest_ip(name)}", command]
     rc, out, err = _run(cmd, timeout)
     if check and rc != 0:
         raise LabError(f"{name}: {err or out}")
@@ -272,7 +378,7 @@ def push(name, local_path, remote_path, timeout=600):
     h = config.host(name)
     cmd = ["scp", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
            "-o", "LogLevel=ERROR", "-i", config.LAB_KEY,
-           local_path, f"{h['user']}@{h['ip']}:{remote_path}"]
+           local_path, f"{h['user']}@{guest_ip(name)}:{remote_path}"]
     rc, out, err = _run(cmd, timeout)
     if rc != 0:
         raise LabError(f"{name}: push failed: {err or out}")
@@ -285,7 +391,7 @@ def status(name):
     return {
         "host": name,
         "name": h["name"],
-        "ip": h["ip"],
+        "ip": guest_ip(name) or "-",
         "vm": st,
         "reachable": reachable(name) if st == "running" else False,
         "snapshots": snapshots(name),

@@ -55,10 +55,10 @@ async def terminal(ws: WebSocket, host: str):
     import asyncssh
     try:
         conn = await asyncio.wait_for(
-            asyncssh.connect(h["ip"], username=h["user"], client_keys=[config.LAB_KEY],
+            asyncssh.connect(core.guest_ip(host), username=h["user"], client_keys=[config.LAB_KEY],
                              known_hosts=None), timeout=12)
     except Exception as e:  # noqa: BLE001
-        await ws.send_text(f"\r\n[ssh to {host} ({h['ip']}) failed: {str(e)[:140]}]\r\n")
+        await ws.send_text(f"\r\n[ssh to {host} ({core.guest_ip(host)}) failed: {str(e)[:140]}]\r\n")
         await ws.close()
         return
 
