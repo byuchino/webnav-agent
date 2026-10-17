@@ -1,6 +1,7 @@
 #!/bin/sh
-# Provision the CCSE lab controller (LXC 904). Run INSIDE the container, as root:
-#   ssh proxmox-1 'pct exec 904 -- sh -c "curl -fsSL https://raw.githubusercontent.com/byuchino/webnav-agent/ccse-lab/deploy/ccse/provision.sh | sh"'
+# Provision the CCSE lab controller (LXC 904). It runs inside the container, as root; from the
+# dev box (a fresh container has no curl, so feed it rather than fetch it):
+#   ssh proxmox-1 'pct exec 904 -- sh' < ~/ccse-lab-runner/deploy/ccse/provision.sh
 # or copy it in and run it. Idempotent: safe to re-run after a pull.
 set -e
 export DEBIAN_FRONTEND=noninteractive

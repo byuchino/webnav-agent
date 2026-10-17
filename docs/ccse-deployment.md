@@ -26,8 +26,11 @@ The container was created 2026-10-16 (Debian 12, 2 cores, 2 GB, 8 GB on `vms`, `
 unprivileged, nesting, onboot). Install the runner and both services:
 
 ```
-ssh proxmox-1 'pct exec 904 -- sh -c "curl -fsSL https://raw.githubusercontent.com/byuchino/webnav-agent/ccse-lab/deploy/ccse/provision.sh | sh"'
+ssh proxmox-1 'pct exec 904 -- sh' < ~/ccse-lab-runner/deploy/ccse/provision.sh
 ```
+
+A fresh Debian 12 container has no `curl`, so the script is fed from the dev box's checkout
+rather than fetched; it installs `curl` and `git` itself, then clones the branch.
 
 `deploy/ccse/provision.sh` is idempotent: it clones (or pulls) `ccse-lab` into `/opt/ccse-lab`,
 builds the venv, installs `ccse-lab.service` and `labs-landing.service`, publishes the landing
