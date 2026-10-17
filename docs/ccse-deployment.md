@@ -13,12 +13,28 @@ no commits to `main`, no restarts on 903, nothing on its guests or its lab subne
 | Service | `falcon-lab.service`, 127.0.0.1:8901 | `ccse-lab.service`, 127.0.0.1:8902 | `labs-landing.service`, 127.0.0.1:8903 |
 | Scenarios | `scenarios/` in this repo | `/opt/ccse-labs`, pushed from the private `~/ccse` repo | — |
 | Networks | LAN + lab subnet `vmbr1` (10.77.0.0/24) | **LAN only** | — |
-| Proxmox root key | yes (manages guests) | **no** — it has no guests | — |
+| Proxmox access | root SSH key (manages guests) | **API token scoped to VM 905** | — |
+| Guests | VMs 900, 901 (vmbr1) | **VM 905 `ccse-lab-lnx`** (vmbr0, no sensor) | — |
 | Falcon API client | CCFA's, read-only | **its own** | — |
 
-The CCSE runner refuses the CCFA guests (VMs 900–902) in `lab/config.py`, so a scenario with
-`target: lnx|win` errors rather than reverting a CCFA VM. The collector scenarios wait for a CCSE
-VM of its own.
+The CCSE runner refuses the CCFA guests (VMs 900–902) in `lab/config.py`; `target: lnx` is
+the CCSE guest, VM 905.
+
+## The CCSE guest and its token (2026-10-17)
+
+VM 905 is a full clone of template 998 (Ubuntu 24.04): 2 vCPU, 4 GB, `vmbr0` DHCP, cloud-init
+user `labadmin` with only the two `ccse_lab_ed25519` public keys (904's `/root/.ssh/` and the dev
+box's `~/.ssh/`), template password removed, no Falcon sensor. Snapshot `bare` was taken after a
+clean shutdown. Rebuild a baseline as root on proxmox-1: `qm shutdown 905 && qm snapshot 905 bare`
+(delete the old one first); the runner's token cannot.
+
+The token: role `CCSELabGuest` (`VM.Audit,VM.PowerMgmt,VM.Snapshot.Rollback,VM.Monitor`), user
+`ccse-lab@pve`, ACL on `/vms/905` only, token `runner` (privsep 0). Its secret was written by
+`pveum user token add … --output-format json` piped straight into
+`/root/.falcon-lab/pve-token.json` (0600) on 904, beside `/etc/pve/pve-root-ca.pem` so TLS is
+verified. Tested from 904: 200 on 905's status, snapshots and agent; 403 on VMs 900, 901, 903 and
+300, on creating a snapshot and on changing config. Revoke with
+`pveum user token remove ccse-lab@pve runner`.
 
 ## Provisioning 904 (once)
 
