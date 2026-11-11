@@ -34,7 +34,7 @@ _BUILD = (
 )
 
 
-def quarantine_bait(host="win", group="Falcon Lab", name="labtest.exe"):
+def quarantine_bait(host="ccfa-win", group="Falcon Lab", name="labtest.exe"):
     """Build a unique benign executable on `host` and blocklist its hash for `group`.
 
     Returns {ok, reason, sha256}. Needs IOC Management **write**; without it the IOC create
@@ -79,5 +79,5 @@ def run(kind, s):
     fn = STAGERS.get(kind)
     if not fn:
         return {"ok": None, "reason": f"unknown stage {kind!r}; known: {sorted(STAGERS)}"}
-    host = s.get("target") if s.get("target") != "console" else "win"
+    host = s.get("target") if s.get("target") != "console" else "ccfa-win"
     return fn(host=host)

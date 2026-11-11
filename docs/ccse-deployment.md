@@ -13,12 +13,13 @@ no commits to `main`, no restarts on 903, nothing on its guests or its lab subne
 | Service | `falcon-lab.service`, 127.0.0.1:8901 | `ccse-lab.service`, 127.0.0.1:8902 | `labs-landing.service`, 127.0.0.1:8903 |
 | Scenarios | `scenarios/` in this repo | `/opt/ccse-labs`, pushed from the private `~/ccse` repo | — |
 | Networks | LAN + lab subnet `vmbr1` (10.77.0.0/24) | **LAN only** | — |
-| Proxmox access | root SSH key (manages guests) | **API token scoped to VM 905** | — |
-| Guests | VMs 900, 901 (vmbr1) | **VM 905 `ccse-lab-lnx`** (vmbr0, no sensor) | — |
+| Proxmox access | root SSH key (manages guests) | **API token scoped to VMs 905-907** | — |
+| Guests | VMs 900, 901 (vmbr1) | **VMs 905 `ccse-lab-lnx`, 906 `ccse-lab-win` (no sensor), 907 `ccse-lab-sensor`** (vmbr0) | — |
 | Falcon API client | CCFA's, read-only | **its own** | — |
 
 The CCSE runner refuses the CCFA guests (VMs 900–902) in `lab/config.py`; `target: lnx` is
-the CCSE guest, VM 905.
+the CCSE Linux guest, VM 905; `win` is VM 906 and `sensor` VM 907 (CCFA's Windows guest is
+`ccfa-win`, refused like the others).
 
 ## The CCSE guest and its token (2026-10-17)
 
@@ -35,6 +36,35 @@ The token: role `CCSELabGuest` (`VM.Audit,VM.PowerMgmt,VM.Snapshot.Rollback,VM.M
 verified. Tested from 904: 200 on 905's status, snapshots and agent; 403 on VMs 900, 901, 903 and
 300, on creating a snapshot and on changing config. Revoke with
 `pveum user token remove ccse-lab@pve runner`.
+
+## The Windows and sensor guests (2026-11-11)
+
+**VM 906 `ccse-lab-win`**: 4 vCPU (`cpu: host`), 6 GB, 64 GB `sata0` and an `e1000` NIC (native
+drivers, as on CCFA's guest), UEFI + TPM 2.0, `vmbr0` DHCP, **no sensor**. A fresh install of
+Windows 11 Enterprise LTSC 2024 Evaluation (26100.1742) from an answer-file ISO modeled on CCFA's
+(computer name `ccse-lab-win`, user `labadmin`, password in `~/.falcon-lab/ccse-win-labadmin` on
+the dev box; the ISO was deleted after the install). First logon installed the virtio guest tools
+(the runner finds the address through the QEMU guest agent), OpenSSH with the two `ccse_lab`
+keys, PowerShell as the SSH shell, NTP, and turned Windows Update off (policy plus the three
+services at Start=4). `C:\ccse\ccse-welgen.ps1` (from `~/ccse/labs/guest/`) is on the system PATH
+with event source `ccse-lab` registered; the Application log was cleared. Snapshot `bare`.
+- **The evaluation needs activating**: right after the install `slmgr /dli` said "Notification,
+  grace time expired"; `slmgr /ato` gave "Licensed", 90 days (to 2027-02-09). `slmgr /rearm`
+  extends it later.
+- **`localtime: 0`**. Proxmox gives a Windows guest a hardware clock in the host's local time
+  (Pacific); a guest set to UTC reads it as UTC, so every revert came back exactly 8 hours
+  behind. With the RTC in UTC the reverted clock is right to the second. The snapshot stores the
+  VM config, so the setting had to be in place before the snapshot was taken.
+
+**VM 907 `ccse-lab-sensor`**: a full clone of template 998, 2 vCPU, 4 GB, `vmbr0` DHCP, cloud-init
+user `labadmin` with the two keys. Falcon sensor installed from `~/falcon-installers` (7.37) with
+grouping tag `ccse-lab`; the tenant's sensor update policy for its dynamic `Linux Hosts` group
+(every Linux host joins it) upgraded it to 8.11.19508 within minutes. `/usr/local/bin/ccse-loggen`
+installed. Snapshot `sensor` (no collector). Do **not** run `cloud-init clean` before
+snapshotting: it makes every boot from the snapshot regenerate the SSH host keys, and the runner
+(`StrictHostKeyChecking=accept-new`) then refuses the guest.
+
+The token's role is on `/vms/905`, `/vms/906` and `/vms/907`.
 
 ## Provisioning 904 (once)
 

@@ -103,8 +103,11 @@ def prep_steps(s):
         out.append(f"Rolls {host} back to the '{base}' baseline (snapshot {snap}), "
                    f"discarding whatever is on it now.")
         if base == "bare":
-            out.append("That baseline has NO sensor — the installed sensor is discarded, and "
-                       "reinstalling will register a new agent ID.")
+            if "sensor" in (config.HOSTS.get(host, {}).get("snapshots") or {}):
+                out.append("That baseline has NO sensor — the installed sensor is discarded, and "
+                           "reinstalling will register a new agent ID.")
+            else:
+                out.append("That baseline has NO sensor and nothing installed.")
         elif base == "collector":
             out.append("That baseline has no sensor and a working Falcon Log Collector (syslog "
                        "on UDP 514 to the ccse-lab-syslog connection), plus the ccse-loggen "

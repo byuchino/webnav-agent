@@ -81,7 +81,7 @@ LAB_GW = "10.77.0.1"
 BASELINES = ("bare", "sensor", "rfm", "collector")
 
 HOSTS = {
-    "win": {
+    "ccfa-win": {
         "vmid": 900,
         "kind": "qemu",
         "os": "windows",
@@ -149,7 +149,36 @@ HOSTS["lnx"] = {
     "snapshots": {"bare": "bare", "collector": "collector"},
     "probe_port": 22,
 }
-GUESTS = ["lnx"]
+# The CCSE Windows guest (2026-11-11): VM 906, a fresh install of Windows 11 Enterprise LTSC
+# 2024 Evaluation from the CCSE answer file (sata0 + e1000 as on CCFA's guest, DHCP on vmbr0,
+# OpenSSH with the two ccse_lab keys, the QEMU guest agent for its address, Windows Update off),
+# NO Falcon sensor. CCFA's Windows guest is `ccfa-win` here, so `win` is this one. The
+# evaluation runs 90 days from the install; `slmgr /rearm` extends it.
+HOSTS["win"] = {
+    "vmid": 906,
+    "kind": "qemu",
+    "os": "windows",
+    "ip": None,
+    "user": "labadmin",
+    "name": "ccse-lab-win",
+    "snapshots": {"bare": "bare"},
+    "probe_port": 22,
+}
+# The CCSE sensor guest (2026-11-11): VM 907, a clone of the Ubuntu 24.04 template WITH a Falcon
+# sensor (grouping tag ccse-lab), for the sensor-managed Log Collector. It is visible in the
+# shared tenant's host views under its own name and host group (ccse-lab-sensor-hosts); the
+# tenant's dynamic `Linux Hosts` group also takes it, as it takes every Linux host.
+HOSTS["sensor"] = {
+    "vmid": 907,
+    "kind": "qemu",
+    "os": "linux",
+    "ip": None,
+    "user": "labadmin",
+    "name": "ccse-lab-sensor",
+    "snapshots": {"sensor": "sensor"},
+    "probe_port": 22,
+}
+GUESTS = ["lnx", "win", "sensor"]
 # Hosts this runner may look at or act on: none of the CCFA ones.
 MANAGED = [k for k, v in HOSTS.items() if v["vmid"] not in CCFA_VMIDS]
 
@@ -220,5 +249,5 @@ def host(name):
         raise KeyError(f"unknown host {name!r}; known: {', '.join(HOSTS)}")
     if HOSTS[name]["vmid"] in CCFA_VMIDS:
         raise KeyError(f"{name!r} is a CCFA lab guest (VM {HOSTS[name]['vmid']}); the CCSE lab "
-                       f"does not touch it; its own guest is `lnx` (VM 905)")
+                       f"does not touch it; its own guests are `lnx`, `win` and `sensor` (VMs 905-907)")
     return HOSTS[name]
