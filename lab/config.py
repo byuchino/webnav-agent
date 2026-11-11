@@ -74,7 +74,11 @@ LAB_GW = "10.77.0.1"
 # A third baseline, because "put a host in RFM" should be a button rather than an afternoon.
 # Building it took an unsupported kernel AND forcing the sensor's backend to kernel mode --
 # on `auto` a modern Linux sensor simply falls back to eBPF user mode and stays healthy.
-BASELINES = ("bare", "sensor", "rfm")
+# A fourth, for the CCSE guest only (2026-11-11): `collector` is VM 905 with the working Falcon
+# Log Collector from hec-connector-and-collector (syslog UDP 514 -> HEC sink -> ccse-lab-syslog,
+# disk queue, CAP_NET_BIND_SERVICE drop-in) and /usr/local/bin/ccse-loggen, not enrolled in Fleet
+# Management. The collector scenarios start from it, and the fault drill breaks it in setup.
+BASELINES = ("bare", "sensor", "rfm", "collector")
 
 HOSTS = {
     "win": {
@@ -142,7 +146,7 @@ HOSTS["lnx"] = {
     "ip": None,
     "user": "labadmin",
     "name": "ccse-lab-lnx",
-    "snapshots": {"bare": "bare"},
+    "snapshots": {"bare": "bare", "collector": "collector"},
     "probe_port": 22,
 }
 GUESTS = ["lnx"]

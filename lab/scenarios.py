@@ -105,6 +105,10 @@ def prep_steps(s):
         if base == "bare":
             out.append("That baseline has NO sensor — the installed sensor is discarded, and "
                        "reinstalling will register a new agent ID.")
+        elif base == "collector":
+            out.append("That baseline has no sensor and a working Falcon Log Collector (syslog "
+                       "on UDP 514 to the ccse-lab-syslog connection), plus the ccse-loggen "
+                       "test generator.")
         elif base == "rfm":
             out.append("That baseline has a sensor deliberately in Reduced Functionality Mode: "
                        "it runs and reports in, and collects almost nothing.")
