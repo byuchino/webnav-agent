@@ -190,6 +190,7 @@ async def api_status():
         # Report BASELINES, not raw snapshot names: the UI should speak the same vocabulary
         # the scenarios do, rather than making the page guess which snapshot means what.
         st["baselines"] = [b for b, snap in (h.get("snapshots") or {}).items() if snap in have]
+        st["where"] = _where(name)
         if name in config.GUESTS:
             st["sensor"] = _redact(await _off(sensor.verify, name))
         out.append(st)
@@ -216,12 +217,44 @@ def _scenario_hosts(s):
     return out
 
 
+def _suggested_order(all_):
+    """Position of each scenario in an order that puts every one after what it `requires`
+    (depth first, alphabetical among equals), so a card can say "#7" and "after #2"."""
+    order, seen = [], set()
+
+    def visit(i, stack=()):
+        if i in seen or i not in all_ or i in stack:
+            return
+        for r in all_[i].get("requires") or []:
+            visit(r, stack + (i,))
+        seen.add(i)
+        order.append(i)
+
+    for i in sorted(all_):
+        visit(i)
+    return {i: n for n, i in enumerate(order, 1)}
+
+
+def _where(target):
+    """Where a scenario runs, in words: the console, or the guest's VM number and name."""
+    h = config.HOSTS.get(target) if target and target != "console" else None
+    if not h:
+        return "Falcon console"
+    vm = f"VM {h['vmid']}" if h.get("vmid") else target
+    return f"{vm} · {h.get('name') or target}"
+
+
 @app.get("/api/scenarios")
 async def api_scenarios():
     all_ = await _off(scenarios.load_all)
+    pos = _suggested_order(all_)
     out = []
-    for s in sorted(all_.values(), key=lambda x: (x.get("domain", 0), x["id"])):
+    for s in sorted(all_.values(), key=lambda x: (x.get("domain", 0), pos.get(x["id"], 0))):
         d = {k: v for k, v in s.items() if k not in ("steps", "setup")}
+        d["order"] = pos.get(s["id"])
+        d["where"] = _where(s.get("target"))
+        d["after"] = [{"id": r, "order": pos.get(r), "name": all_[r].get("name", r)}
+                      for r in (s.get("requires") or []) if r in all_]
         d["kinds"] = sorted({v["kind"] for v in (s.get("verify") or [])})
         d["hosts"] = _scenario_hosts(s)
         d["domain_name"] = config.domains().get(s.get("domain", 0), "?")
@@ -318,6 +351,21 @@ PAGE = r"""
   details.prep summary{cursor:pointer;user-select:none}
   details.prep ul{margin:6px 0 0;padding-left:20px}
   details.prep li{padding:1px 0}
+  .num{font:650 12.5px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--dim);
+       min-width:24px}
+  .name{font-size:16px}
+  .pill.where{color:var(--ink)}
+  .ttl{flex:1 1 300px}
+  .pills{display:inline-flex;gap:6px;flex-wrap:nowrap;margin-left:auto}
+  .sumline{margin-top:6px;font-size:14px;line-height:1.5}
+  details.more{margin-top:3px;font-size:13px;color:var(--dim)}
+  details.more summary{cursor:pointer;user-select:none;font-size:12.5px}
+  details.more p{margin:4px 0 0}
+  .acts{margin-top:9px}
+  .after{margin-top:6px}
+  .after a{color:var(--accent);text-decoration:none}
+  .after a:hover{text-decoration:underline}
+  .card:target{border-color:var(--accent)}
 </style>
 <div class="wrap">
   <h1>__LABTITLE__</h1>
@@ -360,6 +408,7 @@ async function loadHosts(){
   $('#hosts').innerHTML = (r.length ? '<h2>Hosts</h2>' : '') + r.map(h => `
     <div class="card"><div class="row">
       <span class="name">${esc(h.host)}</span>
+      ${h.where?`<span class="dim" style="font-size:13px">${esc(h.where)}</span>`:''}
       <span class="mono dim">${esc(h.ip)}</span>
       <span class="pill ${h.reachable?'ok':'dim'}">${h.reachable?'up':esc(h.vm)}</span>
       ${h.sensor?`<span class="${sensorClass(h.sensor.verdict)}">${esc(h.sensor.verdict)}</span>`:''}
@@ -382,43 +431,59 @@ async function revert(host, baseline, btn){
   finally { clearInterval(poll); btn.disabled=false; btn.textContent=t; loadHosts(); }
 }
 
+// The first sentence of a summary, for the card; the rest folds under "more".
+function splitSummary(s){
+  s = (s||'').replace(/\s+/g,' ').trim();
+  const m = s.match(/^(.+?[a-z0-9)`'\]]\.)\s+(?=[A-Z])/);
+  return m ? [m[1], s.slice(m[0].length)] : [s, ''];
+}
+
 async function loadScen(){
   const r = await (await fetch('api/scenarios')).json();
   window.SCEN = {};
+  const doms = {};
+  r.forEach(s => { (doms[s.domain] = doms[s.domain] || []).push(s); });
   let html = '', dom = null;
   for(const s of r){
     SCEN[s.id] = s;
-    if(s.domain !== dom){ dom = s.domain; html += `<h2>${s.domain}. ${esc(s.domain_name)}</h2>`; }
-    const req = (s.requires||[]).length ? `<span class="meta">needs ${esc((s.requires||[]).join(', '))}</span>` : '';
+    if(s.domain !== dom){
+      dom = s.domain;
+      const list = doms[dom], mins = list.reduce((a,x)=>a+(x.duration_min||0),0);
+      html += `<h2>${s.domain}. ${esc(s.domain_name)}
+        <span style="text-transform:none;letter-spacing:0;font-weight:500">&middot;
+        ${list.length} lab${list.length>1?'s':''}, ${mins} min</span></h2>`;
+    }
+    const [first, rest] = splitSummary(s.summary);
+    const after = (s.after||[]).map(a =>
+      `<a href="#card-${esc(a.id)}">#${a.order} ${esc(a.name)}</a>`).join(', ');
     html += `
-    <div class="card" data-target="${esc(s.target)}" data-baseline="${esc(s.baseline||'none')}">
+    <div class="card" id="card-${esc(s.id)}" data-target="${esc(s.target)}" data-baseline="${esc(s.baseline||'none')}">
       <div class="row">
-        <span class="name">${esc(s.name)}</span>
-        <span class="mono dim">${esc(s.id)}</span>
-        <span class="pill ${s.mode==='auto'?'':'warn'}">${esc(s.mode)}</span>
-        <span class="pill">${esc(s.target)}</span>
-        ${s.objective?`<span class="meta">${esc(s.objective)}</span>`:''}
-        <span class="spacer"></span>
+        ${s.order?`<span class="num">#${s.order}</span>`:''}
+        <span class="name ttl">${esc(s.name)}</span>
+        <span class="pills"><span class="pill where">${esc(s.where||s.target)}</span>
+        ${s.duration_min?`<span class="pill">~${s.duration_min} min</span>`:''}
+        <span class="pill ${s.mode==='auto'?'':'warn'}">${esc(s.mode)}</span></span>
+      </div>
+      ${s.objective?`<div class="meta" style="margin-top:4px">${esc(s.objective)}</div>`:''}
+      <div class="sumline">${esc(first)}</div>
+      ${rest?`<details class="more"><summary>more</summary><p>${esc(rest)}</p></details>`:''}
+      ${after?`<div class="meta after">Do first: ${after}</div>`:''}
+      <div class="row acts">
         <button onclick="show('${s.id}')" title="Show the full instructions only — does not touch the guest or reset anything.">show</button>
-        ${(s.baseline && s.baseline!=='none') ? `<label class="skip" title="Do NOT revert the guest first — keep its current state. Use this when an earlier step configured the host and reverting would undo it."><input type="checkbox" class="norevert"> keep state</label>` : ''}
         <button class="primary" onclick="run('${s.id}',this)">
           ${s.mode==='auto'?'run':'set up'}</button>
         <button onclick="grade('${s.id}',this)">grade</button>
-        ${/* after the primary actions: an extra button before them wrapped set up/grade onto a
-             second line on longer titles. Bare "terminal" unless the exercise touches more than
-             one guest -- the target pill already names the single-host case. */
-          (s.hosts||[]).map(h=>`<button class="term-btn" data-host="${esc(h)}"
+        ${(s.hosts||[]).map(h=>`<button class="term-btn" data-host="${esc(h)}"
           onclick="openTerm('${h}')">terminal${s.hosts.length>1?': '+esc(h):''}</button>`).join('')}
+        ${(s.baseline && s.baseline!=='none') ? `<label class="skip" title="Do NOT revert the guest first — keep its current state. Use this when an earlier step configured the host and reverting would undo it."><input type="checkbox" class="norevert"> keep state</label>` : ''}
+        <span class="spacer"></span>
+        <span class="meta mono">${esc(s.id)}</span>
       </div>
-      <div class="meta" style="margin-top:5px">${esc(s.summary||'')}</div>
       <details class="prep"><summary>what pressing
         ${s.mode==='auto'?'run':'set up'} will do</summary>
         <ul>${(s.prep||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>
-      <div class="row" style="margin-top:5px">
-        <span class="meta mono">${esc((s.kinds||[]).join(' + ')) || 'no checks'}</span>
-        ${s.duration_min?`<span class="meta">~${s.duration_min} min</span>`:''}
-        ${req}
-      </div>
+      <div class="meta mono" style="margin-top:5px">checks: ${esc((s.kinds||[]).join(' + ')) || 'none'}</div>
       <div id="out-${s.id}"></div>
       <div id="grade-${s.id}"></div>
     </div>`;
