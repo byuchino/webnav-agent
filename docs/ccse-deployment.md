@@ -59,12 +59,25 @@ with event source `ccse-lab` registered; the Application log was cleared. Snapsh
 **VM 907 `ccse-lab-sensor`**: a full clone of template 998, 2 vCPU, 4 GB, `vmbr0` DHCP, cloud-init
 user `labadmin` with the two keys. Falcon sensor installed from `~/falcon-installers` (7.37) with
 grouping tag `ccse-lab`; the tenant's sensor update policy for its dynamic `Linux Hosts` group
-(every Linux host joins it) upgraded it to 8.11.19508 within minutes. `/usr/local/bin/ccse-loggen`
-installed. Snapshot `sensor` (no collector). Do **not** run `cloud-init clean` before
+(every Linux host joins it) upgraded it to 8.11.19508 within minutes. Snapshot `sensor` (no
+collector). Snapshot `sensor` retaken 2026-11-12 (disk only, VM shut down, Log Collector policy disabled): the first one (2026-11-10 19:43) predated `/usr/local/bin/ccse-loggen`, so a revert removed the generator. Now it has the generator (md5 8f26b60b), no collector and no `logscale-collector` user; the `sensor-managed-collector` setup check requires the generator. To rebuild: revert, change, `qm shutdown 907`, `qm delsnapshot 907 sensor`, `qm snapshot 907 sensor --description ...`, `qm start 907`, always with the policy disabled (enabled, the sensor installs a collector within minutes of boot). Do **not** run `cloud-init clean` before
 snapshotting: it makes every boot from the snapshot regenerate the SSH host keys, and the runner
 (`StrictHostKeyChecking=accept-new`) then refuses the guest.
 
 The token's role is on `/vms/905`, `/vms/906` and `/vms/907`.
+
+**What each guest sends to** (tenant objects the scenarios rely on; full table in
+`~/ccse/CLAUDE.md`, *Ingestion labs, Phases 2 and 3*):
+
+| Guest | Connection(s) | Parser | Other tenant objects |
+|---|---|---|---|
+| none (curl) | `ccse-lab-hec` | `custom-ccse-lab-json` | |
+| 905 `ccse-lab-lnx` | `ccse-lab-syslog` | `linux-syslog` | Fleet objects named `ccse-...` (Fleet lab) |
+| 906 `ccse-lab-win` | `ccse-lab-win` | `microsoft-windows` | |
+| 907 `ccse-lab-sensor` | `ccse-lab-sensor`, `ccse-lab-sensor-journald` | `linux-syslog`, `linux-journald` | host group `ccse-lab-sensor-hosts`, Log Collector policy `ccse-lab-collector-policy`, Fleet config `ccse-lab-sensor-config`, Fleet group `ccse-lab-sensor-group` |
+
+With `ccse-lab-collector-policy` enabled, the sensor installs the collector on 907 within
+minutes of a revert to `sensor` (the snapshot has none).
 
 ## Provisioning 904 (once)
 
