@@ -365,7 +365,7 @@ PAGE = r"""
   .after{margin-top:6px}
   .after a{color:var(--accent);text-decoration:none}
   .after a:hover{text-decoration:underline}
-  .card:target{border-color:var(--accent)}
+  .card:target,.card.hl{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 </style>
 <div class="wrap">
   <h1>__LABTITLE__</h1>
@@ -490,6 +490,12 @@ async function loadScen(){
   }
   $('#scen').innerHTML = html;
   markTerms();   // cards are rebuilt on every load; re-apply whatever reachability we know
+  // A link such as #card-hec-first-event (the Console Labs page has one per lab) names a card
+  // that did not exist when the browser looked for it; scroll to it now, once.
+  if(location.hash.startsWith('#card-') && !window.HASH_DONE){
+    const el = document.getElementById(location.hash.slice(1));
+    if(el){ el.classList.add('hl'); el.scrollIntoView({block:'start'}); window.HASH_DONE = true; }
+  }
 }
 
 function box(id, inner){ $('#out-'+id).innerHTML = inner; }
